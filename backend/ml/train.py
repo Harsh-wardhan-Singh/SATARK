@@ -1,20 +1,24 @@
 import pandas as pd
 import os
 import joblib
+import sys
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from ml.features import FLOOD_FEATURE_COLUMNS, normalize_flood_feature_frame
 
 def train_model():
     csv_path = os.path.join(PROJECT_ROOT, 'data', 'raw', 'flood_model_training.csv')
     df = pd.read_csv(csv_path)
     
-    # Train on all structural parameters
-    feature_cols = ['elevation', 'flood_exposure', 'severity', 'day', 'intervention', 'drainage_weakness', 'infra_vuln']
-    X = df[feature_cols]
+    # Train on the canonical flood schema only
+    X = normalize_flood_feature_frame(df)
     y = df['impact_score']
     
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)

@@ -14,7 +14,8 @@ class PanicEngine:
         """
         Calculates the new panic level based on water levels and infrastructure failure.
         
-        flood_impacts: dict mapping zone_id (e.g., 'Z01') -> ML impact_score
+        flood_impacts: dict mapping zone_id (e.g.,
+        . 'Z01') -> ML impact_score
         infra_states: dict of infrastructure node data from ExplainableNetwork
         """
         new_panic = {}

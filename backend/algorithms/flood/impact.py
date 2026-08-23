@@ -1,6 +1,15 @@
 import joblib
 import os
 import numpy as np
+import pandas as pd
+import sys
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from ml.features import build_flood_feature_row, normalize_flood_feature_frame
 
 class FloodImpactEngine:
     def __init__(self, model_path="ml/flood_impact_model.joblib"):
@@ -9,7 +18,7 @@ class FloodImpactEngine:
             raise FileNotFoundError(f"Trained ML model not found at {model_path}. Run ml/train.py first.")
         self.model = joblib.load(model_path)
 
-    def calculate_impacts(self, flood_states, zones_data, duration_factor, intervention_level):
+    def calculate_impacts(self, flood_states, zones_data, severity, day, intervention_level):
         """
         Takes current water levels from FloodPropagator and zone metadata,
         and uses the ML model to predict the impact score (0.0 to 1.0) for each zone.
@@ -18,27 +27,18 @@ class FloodImpactEngine:
         
         for zone_id, water_level in flood_states.items():
             zone = zones_data.get(zone_id, {})
-            
-            # Extract features expected by the ML model
-            # ['flood_exposure', 'population_density', 'drainage_weakness', 'infra_vulnerability', 'rainfall_severity', 'duration_factor', 'intervention_level']
-            
-            # Normalize water level to act as flood exposure proxy if needed
-            flood_exposure = min(1.0, water_level / 2.0) # Scale factor depending on max water height
-            population_density = zone.get('population_density', 0.5)
-            drainage_weakness = 1.0 - zone.get('drainage_capacity', 0.5)
-            infra_vulnerability = zone.get('infrastructure_vulnerability', 0.5)
-            rainfall_severity = zone.get('current_rainfall', 0.5)
-            
-            # Construct feature vector for this zone
-            features = np.array([[
-                flood_exposure,
-                population_density,
-                drainage_weakness,
-                infra_vulnerability,
-                rainfall_severity,
-                duration_factor,
-                intervention_level
-            ]])
+
+            # Build the canonical training schema in the exact same order.
+            features = build_flood_feature_row(
+                elevation=zone.get('elevation', zone.get('center_normalized', {}).get('y', 0.5)),
+                flood_exposure=min(1.0, max(0.0, water_level / 2.0)),
+                severity=severity,
+                day=day,
+                intervention=intervention_level,
+                drainage_weakness=1.0 - zone.get('drainage_capacity', zone.get('drainage_rate', 0.5)),
+                infra_vuln=zone.get('infra_vuln', zone.get('infrastructure_vulnerability', 0.5)),
+            )
+            features = normalize_flood_feature_frame(pd.DataFrame([features]))
             
             # Predict impact using the ML model
             predicted_impact = self.model.predict(features)[0]
