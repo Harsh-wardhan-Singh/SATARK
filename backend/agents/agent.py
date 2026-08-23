@@ -7,7 +7,6 @@ from twin.entity import Entity
 
 from infrastructure.facility import Facility
 
-from agents.movement import reached
 from agents.normal_behavior import NormalBehavior
 from agents.panic_behavior import PanicBehavior
 
@@ -22,11 +21,16 @@ class HumanAgent(Entity):
         NORMAL → PANIC → SAFE
 
     ML is not responsible for controlling this state machine.
+
+    zone_id identifies the authoritative simulation zone containing
+    the agent. It is intentionally independent from rendering logic.
     """
 
     state: AgentState = AgentState.NORMAL
 
     speed: float = 1.0
+
+    zone_id: Optional[str] = None
 
     start_position: Optional[Position] = None
 
@@ -48,6 +52,9 @@ class HumanAgent(Entity):
         if self.speed <= 0:
             raise ValueError("Agent speed must be positive.")
 
+        if self.zone_id is not None:
+            self.zone_id = self.zone_id.strip() or None
+
         if self.start_position is None:
             self.start_position = self.position
 
@@ -57,6 +64,22 @@ class HumanAgent(Entity):
                 speed=self.speed,
             )
 
+    def configure_zone(
+        self,
+        zone_id: str,
+    ) -> None:
+        """
+        Assign the agent to an authoritative simulation zone.
+        """
+        normalized_zone_id = zone_id.strip()
+
+        if not normalized_zone_id:
+            raise ValueError(
+                "zone_id cannot be empty."
+            )
+
+        self.zone_id = normalized_zone_id
+
     def configure_normal_route(
         self,
         route: List[Position],
@@ -65,7 +88,9 @@ class HumanAgent(Entity):
         Configure the deterministic movement loop used in NORMAL state.
         """
         if not route:
-            raise ValueError("Normal route cannot be empty.")
+            raise ValueError(
+                "Normal route cannot be empty."
+            )
 
         self.normal_route = route
 
@@ -109,11 +134,13 @@ class HumanAgent(Entity):
         """
 
         if delta_time < 0:
-            raise ValueError("delta_time cannot be negative.")
+            raise ValueError(
+                "delta_time cannot be negative."
+            )
 
-        # ---------------------------------------------------------------------
+        # ------------------------------------------------------------------
         # NORMAL
-        # ---------------------------------------------------------------------
+        # ------------------------------------------------------------------
 
         if self.state == AgentState.NORMAL:
             if self.normal_behavior is not None:
@@ -124,9 +151,9 @@ class HumanAgent(Entity):
 
             return
 
-        # ---------------------------------------------------------------------
+        # ------------------------------------------------------------------
         # PANIC
-        # ---------------------------------------------------------------------
+        # ------------------------------------------------------------------
 
         if self.state == AgentState.PANIC:
             if self.target is None:
@@ -155,9 +182,9 @@ class HumanAgent(Entity):
 
             return
 
-        # ---------------------------------------------------------------------
+        # ------------------------------------------------------------------
         # SAFE
-        # ---------------------------------------------------------------------
+        # ------------------------------------------------------------------
 
         if self.state == AgentState.SAFE:
             return
