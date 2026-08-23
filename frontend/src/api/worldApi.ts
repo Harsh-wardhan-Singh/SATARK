@@ -1,4 +1,4 @@
-import { Zone, SafeZone, Agent } from '../types/domain';
+import { Zone, SafeZone } from '../types/domain';
 import { WorldBounds } from '../city/zones/voronoi';
 
 /**
@@ -75,8 +75,4 @@ export const fetchSafeZones = async (): Promise<SafeZone[]> => {
   // Safe zones remain backend-authoritative.
   // Since we don't have authoritative safe zone data yet, return empty.
   return Promise.resolve([]);
-};
-
-export const fetchAgents = async (): Promise<Agent[]> => {
-  throw new Error('Not implemented: fetchAgents');
 };

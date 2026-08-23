@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CityRenderer } from '../../city/CityRenderer';
 import { ZoneRenderer } from '../../city/zones/ZoneRenderer';
+import { AgentRenderer } from '../../city/agents/AgentRenderer';
 import { CityStateAdapter } from '../../city/CityStateAdapter';
 import { CityInteraction } from '../../city/CityInteraction';
 import { fetchZones, fetchSafeZones, fetchWorldBounds } from '../../api/worldApi';
@@ -12,6 +13,7 @@ export const CityScene: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<CityRenderer | null>(null);
   const zoneRendererRef = useRef<ZoneRenderer | null>(null);
+  const agentRendererRef = useRef<AgentRenderer | null>(null);
   const stateAdapterRef = useRef<CityStateAdapter | null>(null);
   const interactionRef = useRef<CityInteraction | null>(null);
   const worldBoundsRef = useRef<WorldBounds | null>(null);
@@ -58,9 +60,15 @@ export const CityScene: React.FC = () => {
     renderer.onLoadComplete = () => {
       setLoading(false);
       
-      // Initialize zone layer, interaction, and state sync AFTER city loads
+      // Initialize zone layer, agent layer, interaction, and state sync AFTER city loads
       const zoneRenderer = new ZoneRenderer(renderer);
       zoneRendererRef.current = zoneRenderer;
+
+      const agentRenderer = new AgentRenderer(renderer);
+      agentRendererRef.current = agentRenderer;
+      agentRenderer.load().catch((err) => {
+        console.error("Failed to load agent model:", err);
+      });
 
       // Pass terrain footprint for accurate zone boundary clipping
       const terrainFootprint = renderer.getTerrainFootprint();
@@ -73,7 +81,7 @@ export const CityScene: React.FC = () => {
         zoneRenderer.setWorldBounds(worldBoundsRef.current);
       }
 
-      const stateAdapter = new CityStateAdapter(zoneRenderer);
+      const stateAdapter = new CityStateAdapter(zoneRenderer, agentRenderer);
       stateAdapterRef.current = stateAdapter;
 
       const interaction = new CityInteraction(containerRef.current!, renderer, zoneRenderer);
@@ -101,11 +109,13 @@ export const CityScene: React.FC = () => {
       resizeObserver.disconnect();
       interactionRef.current?.dispose();
       stateAdapterRef.current?.dispose();
+      agentRendererRef.current?.dispose();
       zoneRendererRef.current?.dispose();
       renderer.dispose();
       
       interactionRef.current = null;
       stateAdapterRef.current = null;
+      agentRendererRef.current = null;
       zoneRendererRef.current = null;
       rendererRef.current = null;
     };
