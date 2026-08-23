@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from decision.intervention import (
-    CandidateIntervention,
     Intervention,
 )
 from decision.priority import (
@@ -46,14 +45,22 @@ class Recommendation:
         "algorithms.intervention.recommendations"
     )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Return a JSON-compatible representation.
+        """
+
         return {
             "intervention": (
                 self.intervention.to_dict()
             ),
             "priority": self.priority,
             "reason": self.reason,
-            "response": self.response.to_dict(),
+            "response": (
+                self.response.to_dict()
+            ),
             "source": self.source,
         }
 
@@ -62,7 +69,7 @@ class RecommendationEngine:
     """
     Adapter around the existing intervention recommendation algorithm.
 
-    It does not duplicate the intervention-selection thresholds.
+    It does not duplicate intervention-selection thresholds.
     """
 
     def __init__(
@@ -90,7 +97,10 @@ class RecommendationEngine:
     def recommend(
         self,
         *,
-        risk_assessment: Mapping[str, Any],
+        risk_assessment: Mapping[
+            str,
+            Any,
+        ],
         algorithm_recommendations: Sequence[
             Mapping[str, Any]
         ],
@@ -99,8 +109,9 @@ class RecommendationEngine:
         Convert existing algorithm recommendations into structured
         decision recommendations.
 
-        `algorithm_recommendations` must come from the existing
-        algorithms/intervention/recommendations.py implementation.
+        `algorithm_recommendations` must come from:
+
+            algorithms/intervention/recommendations.py
 
         No intervention thresholds are calculated here.
         """
@@ -120,25 +131,35 @@ class RecommendationEngine:
             Recommendation
         ] = []
 
-        for raw in algorithm_recommendations:
+        for raw in (
+            algorithm_recommendations
+        ):
+
             intervention = (
                 self._convert_algorithm_intervention(
-                    raw,
-                    priority_map,
-                    priorities,
+                    raw=raw,
+                    priority_map=(
+                        priority_map
+                    ),
+                    priorities=priorities,
                 )
             )
 
-            reason = self._extract_reason(
-                raw
+            reason = (
+                self._extract_reason(
+                    raw
+                )
             )
 
             response = (
-                self.response_engine.build_response(
+                self.response_engine
+                .build_response(
                     intervention,
                     reason=reason,
-                    target=self._extract_target(
-                        raw
+                    target=(
+                        self._extract_target(
+                            raw
+                        )
                     ),
                     execution_parameters=(
                         self._extract_execution_parameters(
@@ -150,8 +171,12 @@ class RecommendationEngine:
 
             recommendations.append(
                 Recommendation(
-                    intervention=intervention,
-                    priority=intervention.priority,
+                    intervention=(
+                        intervention
+                    ),
+                    priority=(
+                        intervention.priority
+                    ),
                     reason=reason,
                     response=response,
                 )
@@ -169,7 +194,10 @@ class RecommendationEngine:
 
     def _convert_algorithm_intervention(
         self,
-        raw: Mapping[str, Any],
+        raw: Mapping[
+            str,
+            Any,
+        ],
         priority_map: Mapping[
             str,
             Any,
@@ -177,7 +205,7 @@ class RecommendationEngine:
         priorities: PriorityResult,
     ) -> Intervention:
         """
-        Convert the existing algorithm representation into the
+        Convert an existing algorithm intervention into the SATARK
         decision-layer Intervention contract.
         """
 
@@ -207,10 +235,14 @@ class RecommendationEngine:
             or ""
         )
 
-        priority = self._determine_intervention_priority(
-            raw=raw,
-            priority_map=priority_map,
-            priorities=priorities,
+        priority = (
+            self._determine_intervention_priority(
+                raw=raw,
+                priority_map=(
+                    priority_map
+                ),
+                priorities=priorities,
+            )
         )
 
         effects = (
@@ -223,19 +255,32 @@ class RecommendationEngine:
             "trigger"
         )
 
+        target = raw.get(
+            "target"
+        )
+
         return Intervention(
             intervention_id=str(
                 intervention_id
             ),
-            name=str(name),
+            name=str(
+                name
+            ),
             description=str(
                 description
             ),
             priority=priority,
-            expected_effects=effects,
+            expected_effects=(
+                effects
+            ),
             trigger=(
                 str(trigger)
                 if trigger is not None
+                else None
+            ),
+            target=(
+                str(target)
+                if target is not None
                 else None
             ),
         )
@@ -243,7 +288,10 @@ class RecommendationEngine:
     @staticmethod
     def _determine_intervention_priority(
         *,
-        raw: Mapping[str, Any],
+        raw: Mapping[
+            str,
+            Any,
+        ],
         priority_map: Mapping[
             str,
             Any,
@@ -251,10 +299,11 @@ class RecommendationEngine:
         priorities: PriorityResult,
     ) -> str:
         """
-        Prefer an explicit priority supplied by the existing algorithm.
+        Prefer explicit priority from the existing algorithm.
 
-        Otherwise derive priority from the strongest relevant risk
-        factor already calculated by PriorityEngine.
+        Otherwise derive priority from the associated risk factor.
+
+        Otherwise use the overall risk priority.
         """
 
         explicit_priority = raw.get(
@@ -265,23 +314,34 @@ class RecommendationEngine:
             return str(
                 explicit_priority
             ).upper()
-        
+
         relevant_factor = (
             raw.get("risk_factor")
             or raw.get("factor")
         )
 
-        if relevant_factor in priority_map:
-            return priority_map[
-                relevant_factor
-            ].priority
+        if (
+            relevant_factor
+            in priority_map
+        ):
+            return (
+                priority_map[
+                    relevant_factor
+                ].priority
+            )
 
-        return priorities.overall_priority
+        return (
+            priorities.overall_priority
+        )
 
     @staticmethod
     def _extract_reason(
-        raw: Mapping[str, Any],
+        raw: Mapping[
+            str,
+            Any,
+        ],
     ) -> str:
+
         return str(
             raw.get(
                 "reason",
@@ -295,8 +355,12 @@ class RecommendationEngine:
 
     @staticmethod
     def _extract_target(
-        raw: Mapping[str, Any],
+        raw: Mapping[
+            str,
+            Any,
+        ],
     ) -> str | None:
+
         target = raw.get(
             "target"
         )
@@ -304,12 +368,21 @@ class RecommendationEngine:
         if target is None:
             return None
 
-        return str(target)
+        return str(
+            target
+        )
 
     @staticmethod
     def _extract_execution_parameters(
-        raw: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
+        raw: Mapping[
+            str,
+            Any,
+        ],
+    ) -> Mapping[
+        str,
+        Any,
+    ]:
+
         parameters = raw.get(
             "execution_parameters"
         )
@@ -325,12 +398,18 @@ class RecommendationEngine:
         ):
             return {}
 
-        return dict(parameters)
+        return dict(
+            parameters
+        )
 
     @staticmethod
     def _recommendation_sort_key(
         recommendation: Recommendation,
-    ) -> tuple[int, str]:
+    ) -> tuple[
+        int,
+        str,
+    ]:
+
         priority_order = {
             "CRITICAL": 0,
             "HIGH": 1,

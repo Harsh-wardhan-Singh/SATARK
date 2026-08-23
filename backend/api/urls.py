@@ -1,1 +1,80 @@
+from django.urls import path
 
+from api.views import (
+    InterventionView,
+    OptimizationView,
+    RecommendationView,
+    RiskView,
+    SelectedInterventionView,
+    SimulationInitializeView,
+    SimulationPauseView,
+    SimulationResetView,
+    SimulationResumeView,
+    SimulationRunView,
+    SimulationStateView,
+    SimulationStepView,
+)
+
+
+urlpatterns = [
+    path(
+        "simulation/initialize/",
+        SimulationInitializeView.as_view(),
+        name="simulation-initialize",
+    ),
+    path(
+        "simulation/state/",
+        SimulationStateView.as_view(),
+        name="simulation-state",
+    ),
+    path(
+        "simulation/step/",
+        SimulationStepView.as_view(),
+        name="simulation-step",
+    ),
+    path(
+        "simulation/run/",
+        SimulationRunView.as_view(),
+        name="simulation-run",
+    ),
+    path(
+        "simulation/pause/",
+        SimulationPauseView.as_view(),
+        name="simulation-pause",
+    ),
+    path(
+        "simulation/resume/",
+        SimulationResumeView.as_view(),
+        name="simulation-resume",
+    ),
+    path(
+        "simulation/reset/",
+        SimulationResetView.as_view(),
+        name="simulation-reset",
+    ),
+    path(
+        "simulation/risk/",
+        RiskView.as_view(),
+        name="simulation-risk",
+    ),
+    path(
+        "simulation/recommendations/",
+        RecommendationView.as_view(),
+        name="simulation-recommendations",
+    ),
+    path(
+        "simulation/optimize/",
+        OptimizationView.as_view(),
+        name="simulation-optimize",
+    ),
+    path(
+        "simulation/intervention/",
+        InterventionView.as_view(),
+        name="simulation-intervention",
+    ),
+    path(
+        "simulation/intervention/apply-selected/",
+        SelectedInterventionView.as_view(),
+        name="simulation-apply-selected-intervention",
+    ),
+]

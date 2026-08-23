@@ -2,7 +2,8 @@
 SATARK decision priority engine.
 
 This layer consumes the existing risk-assessment algorithm output.
-It does not calculate risk itself.
+
+It does not calculate risk itself and does not execute interventions.
 """
 
 from __future__ import annotations
@@ -18,14 +19,25 @@ class PriorityItem:
     """
 
     factor: str
+
     score: float
+
     priority: str
+
     rationale: str
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Return a JSON-compatible representation.
+        """
+
         return {
             "factor": self.factor,
-            "score": self.score,
+            "score": float(
+                self.score
+            ),
             "priority": self.priority,
             "rationale": self.rationale,
         }
@@ -39,9 +51,18 @@ class PriorityResult:
 
     overall_priority: str
 
-    items: tuple[PriorityItem, ...]
+    items: tuple[
+        PriorityItem,
+        ...,
+    ]
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Return a JSON-compatible representation.
+        """
+
         return {
             "overall_priority": (
                 self.overall_priority
@@ -57,8 +78,7 @@ class PriorityEngine:
     """
     Converts an existing risk report into decision priorities.
 
-    The risk report is expected to contain the breakdown produced by
-    algorithms/intervention/risk_assessment.py.
+    The risk report is produced by the authoritative RiskEngine.
 
     No risk formula is duplicated here.
     """
@@ -71,56 +91,77 @@ class PriorityEngine:
 
     def evaluate(
         self,
-        risk_assessment: Mapping[str, Any],
+        risk_assessment: Mapping[
+            str,
+            Any,
+        ],
     ) -> PriorityResult:
         """
-        Evaluate priorities from an existing risk assessment.
+        Evaluate decision priorities from an existing risk assessment.
 
-        Accepted input shape:
+        Expected input:
 
-        {
-            "composite_risk_score": ...,
-            "breakdown": {
-                "casualties": ...,
-                "infrastructure": ...,
-                "flooding": ...,
-                "congestion": ...
+            {
+                "composite_risk_score": ...,
+                "breakdown": {
+                    "casualties": ...,
+                    "infrastructure_failure": ...,
+                    "flooding_severity": ...,
+                    "crowd_congestion": ...
+                }
             }
-        }
-
-        The engine also accepts the naming used by the current
-        risk algorithm if it exposes component scores differently.
         """
 
-        composite_score = self._extract_composite_score(
-            risk_assessment
+        composite_score = (
+            self._extract_composite_score(
+                risk_assessment
+            )
         )
 
-        breakdown = self._extract_breakdown(
-            risk_assessment
+        breakdown = (
+            self._extract_breakdown(
+                risk_assessment
+            )
         )
 
-        items: list[PriorityItem] = []
+        items: list[
+            PriorityItem
+        ] = []
 
-        for factor, score in breakdown.items():
-            numeric_score = float(score)
+        for factor, score in (
+            breakdown.items()
+        ):
+
+            numeric_score = float(
+                score
+            )
 
             items.append(
                 PriorityItem(
-                    factor=str(factor),
-                    score=numeric_score,
-                    priority=self._priority_from_score(
-                        numeric_score
+                    factor=str(
+                        factor
                     ),
-                    rationale=self._build_rationale(
-                        factor=str(factor),
-                        score=numeric_score,
+                    score=numeric_score,
+                    priority=(
+                        self._priority_from_score(
+                            numeric_score
+                        )
+                    ),
+                    rationale=(
+                        self._build_rationale(
+                            factor=str(
+                                factor
+                            ),
+                            score=numeric_score,
+                        )
                     ),
                 )
             )
 
         items.sort(
-            key=lambda item: item.score,
+            key=lambda item: (
+                item.score
+            ),
             reverse=True,
         )
 
@@ -130,7 +171,9 @@ class PriorityEngine:
                     composite_score
                 )
             ),
-            items=tuple(items),
+            items=tuple(
+                items
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -139,10 +182,13 @@ class PriorityEngine:
 
     @staticmethod
     def _extract_composite_score(
-        risk_assessment: Mapping[str, Any],
+        risk_assessment: Mapping[
+            str,
+            Any,
+        ],
     ) -> float:
         """
-        Extract the overall score from the existing risk output.
+        Extract the overall risk score.
         """
 
         for key in (
@@ -150,6 +196,7 @@ class PriorityEngine:
             "composite_score",
             "risk_score",
         ):
+
             if key in risk_assessment:
                 return float(
                     risk_assessment[key]
@@ -162,19 +209,29 @@ class PriorityEngine:
 
     @staticmethod
     def _extract_breakdown(
-        risk_assessment: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
+        risk_assessment: Mapping[
+            str,
+            Any,
+        ],
+    ) -> Mapping[
+        str,
+        Any,
+    ]:
         """
-        Extract the component breakdown from the existing risk output.
+        Extract the risk-component breakdown.
         """
 
-        breakdown = risk_assessment.get(
-            "breakdown"
+        breakdown = (
+            risk_assessment.get(
+                "breakdown"
+            )
         )
 
         if breakdown is None:
-            breakdown = risk_assessment.get(
-                "risk_breakdown"
+            breakdown = (
+                risk_assessment.get(
+                    "risk_breakdown"
+                )
             )
 
         if not isinstance(
@@ -197,6 +254,7 @@ class PriorityEngine:
         cls,
         score: float,
     ) -> str:
+
         if score >= cls.PRIORITY_THRESHOLDS[
             "CRITICAL"
         ]:
@@ -220,6 +278,7 @@ class PriorityEngine:
         factor: str,
         score: float,
     ) -> str:
+
         if score >= 75:
             return (
                 f"{factor} is at a critical level "

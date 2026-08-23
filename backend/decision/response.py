@@ -9,7 +9,7 @@ It does not execute the intervention.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from decision.intervention import (
@@ -36,17 +36,17 @@ class Response:
     execution_parameters: Mapping[
         str,
         Any,
-    ] = None
+    ] = field(
+        default_factory=dict
+    )
 
-    def __post_init__(self) -> None:
-        if self.execution_parameters is None:
-            object.__setattr__(
-                self,
-                "execution_parameters",
-                {},
-            )
+    def to_dict(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Return a JSON-compatible representation.
+        """
 
-    def to_dict(self) -> dict[str, Any]:
         return {
             "intervention": (
                 self.intervention.to_dict()
@@ -84,11 +84,15 @@ class ResponseEngine:
 
         return Response(
             intervention=intervention,
-            priority=intervention.priority,
+            priority=(
+                intervention.priority
+            ),
             reason=reason,
             target=target,
             execution_parameters=(
-                execution_parameters
-                or {}
+                dict(
+                    execution_parameters
+                    or {}
+                )
             ),
         )

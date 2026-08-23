@@ -1,11 +1,20 @@
 """
 SATARK intervention optimization layer.
 
-The optimizer compares baseline and intervention scenarios.
+The optimizer compares a baseline simulation against candidate
+intervention simulations.
 
-The actual simulation implementation is deliberately injected through
-a simulation provider. This prevents the decision layer from creating
-a second simulation engine.
+The optimizer does not implement disaster simulation.
+
+Instead:
+
+    OptimizationEngine
+            ↓
+    SimulationProvider
+            ↓
+    actual SimulationEngine
+
+This keeps optimization independent from simulation mechanics.
 """
 
 from __future__ import annotations
@@ -29,10 +38,9 @@ class SimulationEvaluation:
     """
     Minimal simulation result required by the optimizer.
 
-    This is deliberately independent of SimulationEngine.
+    This object is deliberately independent of SimulationEngine.
 
-    SimulationEngine will later produce the data needed to construct
-    this object.
+    SimulationEngine produces this data after a complete simulation.
     """
 
     metrics: Mapping[str, float]
@@ -52,19 +60,31 @@ class SimulationEvaluation:
         default_factory=dict
     )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Return a JSON-compatible representation.
+        """
+
         return {
-            "metrics": dict(
-                self.metrics
-            ),
-            "final_risk_score": (
+            "metrics": {
+                key: float(value)
+                for key, value
+                in self.metrics.items()
+            },
+            "final_risk_score": float(
                 self.final_risk_score
             ),
-            "casualties": self.casualties,
-            "infrastructure_damage": (
+            "casualties": float(
+                self.casualties
+            ),
+            "infrastructure_damage": float(
                 self.infrastructure_damage
             ),
-            "congestion": self.congestion,
+            "congestion": float(
+                self.congestion
+            ),
             "additional_data": dict(
                 self.additional_data
             ),
@@ -100,7 +120,13 @@ class OptimizationCandidateResult:
 
     rationale: str
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Return a JSON-compatible representation.
+        """
+
         return {
             "intervention": (
                 self.intervention.to_dict()
@@ -111,19 +137,19 @@ class OptimizationCandidateResult:
             "intervention_result": (
                 self.intervention_result.to_dict()
             ),
-            "improvement_score": (
+            "improvement_score": float(
                 self.improvement_score
             ),
-            "risk_reduction": (
+            "risk_reduction": float(
                 self.risk_reduction
             ),
-            "casualty_reduction": (
+            "casualty_reduction": float(
                 self.casualty_reduction
             ),
-            "infrastructure_improvement": (
+            "infrastructure_improvement": float(
                 self.infrastructure_improvement
             ),
-            "congestion_improvement": (
+            "congestion_improvement": float(
                 self.congestion_improvement
             ),
             "rationale": self.rationale,
@@ -140,7 +166,12 @@ class OptimizationResult:
     """
     Complete optimization result.
 
-    Contains every evaluated candidate and the selected best option.
+    Contains:
+
+        baseline result
+        every evaluated candidate
+        selected intervention
+        selection explanation
     """
 
     baseline: SimulationEvaluation
@@ -150,18 +181,27 @@ class OptimizationResult:
         ...
     ]
 
-    selected_intervention: Intervention | None
+    selected_intervention: (
+        Intervention | None
+    )
 
     selection_reason: str
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Return a JSON-compatible representation.
+        """
+
         return {
             "baseline": (
                 self.baseline.to_dict()
             ),
             "candidates": [
                 candidate.to_dict()
-                for candidate in self.candidates
+                for candidate
+                in self.candidates
             ],
             "selected_intervention": (
                 self.selected_intervention.to_dict()
@@ -198,20 +238,24 @@ class OptimizationEngine:
 
     The simulation provider is injected.
 
-    This is intentional:
+    The optimizer therefore never:
 
-        OptimizationEngine
-                ↓
-        SimulationProvider
-                ↓
-        actual SimulationEngine
+        - advances the simulation clock
+        - calculates flood propagation
+        - calculates ML impact
+        - calculates infrastructure cascade
+        - calculates casualties
+        - calculates risk
 
-    The optimizer therefore never implements disaster simulation.
+    Those responsibilities remain inside SimulationEngine and its
+    algorithm dependencies.
     """
 
     def __init__(
         self,
-        simulation_provider: SimulationProvider | None = None,
+        simulation_provider: (
+            SimulationProvider | None
+        ) = None,
     ) -> None:
 
         self.simulation_provider = (
@@ -219,7 +263,7 @@ class OptimizationEngine:
         )
 
     # ------------------------------------------------------------------
-    # Main API
+    # Public API
     # ------------------------------------------------------------------
 
     def optimize(
@@ -234,10 +278,13 @@ class OptimizationEngine:
         ],
     ) -> OptimizationResult:
         """
-        Evaluate candidate interventions against a baseline.
+        Evaluate all applicable interventions against one baseline.
 
-        Raises:
-            RuntimeError if no simulation provider has been configured.
+        The baseline is always simulated first with no intervention.
+
+        Every candidate receives an independent simulation run.
+
+        The baseline scenario itself is never mutated.
         """
 
         self._require_simulation_provider()
@@ -253,23 +300,36 @@ class OptimizationEngine:
         ] = []
 
         for candidate in candidates:
+
             if not candidate.applicable:
                 continue
 
+            intervention_scenario = (
+                self._build_intervention_scenario(
+                    baseline_scenario=(
+                        baseline_scenario
+                    ),
+                    intervention=(
+                        candidate.intervention
+                    ),
+                )
+            )
+
             intervention_result = (
                 self.simulation_provider(
-                    self._build_intervention_scenario(
-                        baseline_scenario,
-                        candidate.intervention,
-                    )
+                    intervention_scenario
                 )
             )
 
             result = (
                 self._compare_candidate(
-                    candidate.intervention,
-                    baseline,
-                    intervention_result,
+                    intervention=(
+                        candidate.intervention
+                    ),
+                    baseline=baseline,
+                    intervention_result=(
+                        intervention_result
+                    ),
                 )
             )
 
@@ -284,52 +344,60 @@ class OptimizationEngine:
             reverse=True,
         )
 
-        if evaluated:
-            selected = evaluated[0]
+        if not evaluated:
 
             return OptimizationResult(
                 baseline=baseline,
-                candidates=tuple(
-                    evaluated
-                ),
-                selected_intervention=(
-                    selected.intervention
-                ),
+                candidates=(),
+                selected_intervention=None,
                 selection_reason=(
-                    selected.rationale
+                    "No applicable intervention "
+                    "candidates were available."
                 ),
             )
 
+        selected = evaluated[0]
+
         return OptimizationResult(
             baseline=baseline,
-            candidates=(),
-            selected_intervention=None,
+            candidates=tuple(
+                evaluated
+            ),
+            selected_intervention=(
+                selected.intervention
+            ),
             selection_reason=(
-                "No applicable intervention "
-                "candidates were available."
+                selected.rationale
             ),
         )
 
     # ------------------------------------------------------------------
-    # Comparison
+    # Candidate comparison
     # ------------------------------------------------------------------
 
     @staticmethod
     def _compare_candidate(
+        *,
         intervention: Intervention,
         baseline: SimulationEvaluation,
         intervention_result: SimulationEvaluation,
     ) -> OptimizationCandidateResult:
         """
-        Compare baseline and intervention outcomes.
+        Compare one intervention simulation against baseline.
 
         Lower is better for:
+
             risk
             casualties
             infrastructure damage
             congestion
 
-        Therefore improvement is calculated as reduction.
+        Therefore each improvement is represented as:
+
+            baseline - intervention
+
+        Positive values mean improvement.
+        Negative values mean deterioration.
         """
 
         risk_reduction = (
@@ -352,39 +420,38 @@ class OptimizationEngine:
             - intervention_result.congestion
         )
 
-        # Weighted objective.
-        #
-        # Risk receives the highest weight because it is the primary
-        # decision-level outcome.
+        # --------------------------------------------------------------
+        # Weighted optimization objective
+        # --------------------------------------------------------------
+
         improvement_score = (
             risk_reduction * 0.50
-            +
-            casualty_reduction * 0.25
-            +
-            infrastructure_improvement * 0.15
-            +
-            congestion_improvement * 0.10
+            + casualty_reduction * 0.25
+            + infrastructure_improvement * 0.15
+            + congestion_improvement * 0.10
         )
 
-        if improvement_score > 0:
-            rationale = (
-                f"{intervention.name} produced the strongest "
-                f"simulated improvement with a composite "
-                f"improvement score of "
-                f"{improvement_score:.2f}."
+        rationale = (
+            OptimizationEngine
+            ._build_rationale(
+                intervention=intervention,
+                improvement_score=(
+                    improvement_score
+                ),
+                risk_reduction=(
+                    risk_reduction
+                ),
+                casualty_reduction=(
+                    casualty_reduction
+                ),
+                infrastructure_improvement=(
+                    infrastructure_improvement
+                ),
+                congestion_improvement=(
+                    congestion_improvement
+                ),
             )
-
-        elif improvement_score == 0:
-            rationale = (
-                f"{intervention.name} produced no measurable "
-                "improvement over the baseline simulation."
-            )
-
-        else:
-            rationale = (
-                f"{intervention.name} performed worse than "
-                "the baseline simulation."
-            )
+        )
 
         return OptimizationCandidateResult(
             intervention=intervention,
@@ -395,7 +462,9 @@ class OptimizationEngine:
             improvement_score=(
                 improvement_score
             ),
-            risk_reduction=risk_reduction,
+            risk_reduction=(
+                risk_reduction
+            ),
             casualty_reduction=(
                 casualty_reduction
             ),
@@ -409,11 +478,61 @@ class OptimizationEngine:
         )
 
     # ------------------------------------------------------------------
+    # Explanation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_rationale(
+        *,
+        intervention: Intervention,
+        improvement_score: float,
+        risk_reduction: float,
+        casualty_reduction: float,
+        infrastructure_improvement: float,
+        congestion_improvement: float,
+    ) -> str:
+        """
+        Build an explainable selection rationale.
+        """
+
+        if improvement_score > 0:
+
+            return (
+                f"{intervention.name} produced a "
+                f"positive simulated improvement score "
+                f"of {improvement_score:.2f}. "
+                f"Risk changed by "
+                f"{risk_reduction:+.2f}, casualties by "
+                f"{casualty_reduction:+.2f}, "
+                f"infrastructure damage by "
+                f"{infrastructure_improvement:+.2f}, "
+                f"and congestion by "
+                f"{congestion_improvement:+.2f} "
+                f"relative to the baseline."
+            )
+
+        if improvement_score == 0:
+
+            return (
+                f"{intervention.name} produced no "
+                "measurable improvement over the "
+                "baseline simulation."
+            )
+
+        return (
+            f"{intervention.name} performed worse "
+            "than the baseline simulation according "
+            f"to the optimization objective "
+            f"({improvement_score:.2f})."
+        )
+
+    # ------------------------------------------------------------------
     # Scenario construction
     # ------------------------------------------------------------------
 
     @staticmethod
     def _build_intervention_scenario(
+        *,
         baseline_scenario: Mapping[
             str,
             Any,
@@ -421,9 +540,9 @@ class OptimizationEngine:
         intervention: Intervention,
     ) -> dict[str, Any]:
         """
-        Create a candidate scenario without mutating the baseline.
+        Create an independent candidate scenario.
 
-        The actual SimulationEngine will interpret this scenario later.
+        The original baseline mapping is never mutated.
         """
 
         scenario = dict(
@@ -443,9 +562,12 @@ class OptimizationEngine:
     def _require_simulation_provider(
         self,
     ) -> None:
+
         if self.simulation_provider is None:
+
             raise RuntimeError(
-                "OptimizationEngine requires a simulation "
-                "provider. Connect it to SimulationEngine "
-                "before running optimization."
+                "OptimizationEngine requires a "
+                "simulation provider. Connect it "
+                "to SimulationEngine before "
+                "running optimization."
             )
