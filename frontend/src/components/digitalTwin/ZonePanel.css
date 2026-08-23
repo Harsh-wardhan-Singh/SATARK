@@ -21,4 +21,43 @@
 .empty-state p {
   color: #888;
   font-style: italic;
+  margin-bottom: 0.75rem;
 }
+
+.zone-panel-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.zone-panel-btn {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.zone-panel-btn-primary {
+  background: #0088cc;
+  color: #ffffff;
+  border: 1px solid #00aaff;
+}
+
+.zone-panel-btn-primary:hover {
+  background: #0099ee;
+}
+
+.zone-panel-btn-secondary {
+  background: #2a2a2a;
+  color: #cccccc;
+  border: 1px solid #444444;
+}
+
+.zone-panel-btn-secondary:hover {
+  background: #383838;
+  color: #ffffff;
+}
+
