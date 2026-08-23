@@ -1,7 +1,11 @@
-import random
-from typing import Optional
+from __future__ import annotations
 
-from core.constants import MAX_SIMULATION_TICKS
+import random
+from typing import Iterable
+
+from agents.manager import AgentManager
+from infrastructure.facility import Facility
+from twin.entity import Entity
 
 from simulation.clock import SimulationClock
 from simulation.scenario import Scenario
@@ -10,27 +14,35 @@ from simulation.world import SimulationWorld
 
 class SimulationEngine:
     """
-    Central orchestrator of a SATARK simulation.
+    Central SATARK simulation orchestrator.
 
-    Phase 1 responsibilities:
-        - initialize a scenario
-        - initialize the Digital Twin
-        - control simulation time
-        - advance one simulation tick
-        - enforce basic simulation limits
+    Phase 8 responsibilities:
+        - initialize the scenario
+        - own simulation time
+        - synchronize WorldState time
+        - update existing HumanAgents
+        - expose simulation lifecycle controls
 
-    Disaster algorithms, ML, cascade, risk, decision and snapshot
-    processing will be integrated in later phases.
+    Disaster/ML/cascade/risk integrations are intentionally left to
+    later phases. Existing algorithm implementations must be connected
+    rather than duplicated here.
     """
 
     def __init__(
         self,
         scenario: Scenario,
-        world: Optional[SimulationWorld] = None,
+        *,
+        world: SimulationWorld | None = None,
+        entities: Iterable[Entity] | None = None,
     ) -> None:
+
         self.scenario = scenario
 
-        self.world = world or SimulationWorld()
+        self.world = (
+            world
+            if world is not None
+            else SimulationWorld()
+        )
 
         self.clock = SimulationClock(
             tick_rate=scenario.tick_rate
@@ -40,116 +52,232 @@ class SimulationEngine:
             scenario.random_seed
         )
 
+        self._initial_entities = (
+            list(entities)
+            if entities is not None
+            else []
+        )
+
+        self._agent_manager: AgentManager | None = None
+
         self._initialized = False
+        self._paused = False
+
+    # ------------------------------------------------------------------
+    # Properties
+    # ------------------------------------------------------------------
+
+    @property
+    def state(self):
+        """
+        Return the authoritative simulation state.
+        """
+        return self.world.state
 
     @property
     def is_initialized(self) -> bool:
-        """
-        Return whether the simulation has been initialized.
-        """
         return self._initialized
 
     @property
-    def is_finished(self) -> bool:
-        """
-        Return whether the simulation duration has been reached.
-        """
-        if not self._initialized:
-            return False
+    def is_paused(self) -> bool:
+        return self._paused
 
-        return self.clock.has_reached(
-            self.scenario.duration
+    @property
+    def is_complete(self) -> bool:
+        return (
+            self.clock.simulation_time
+            >= self.scenario.duration
         )
+
+    # ------------------------------------------------------------------
+    # Initialization
+    # ------------------------------------------------------------------
 
     def initialize(self) -> None:
         """
-        Initialize the simulation world from the configured scenario.
-
-        Initialization is intentionally separate from construction so
-        creating an engine does not mutate the Digital Twin.
+        Initialize the Digital Twin for the scenario.
         """
-        if self._initialized:
-            raise RuntimeError(
-                "SimulationEngine is already initialized."
-            )
 
-        self.world.initialize(self.scenario)
+        self.clock.reset()
 
-        self._initialized = True
+        self.world.initialize(
+            entities=self._initial_entities,
+            calamity_type=self.scenario.calamity_type,
+        )
 
-    def step(self) -> float:
-        """
-        Advance the simulation by exactly one tick.
+        self._agent_manager = AgentManager(
+            self.world.state
+        )
 
-        Phase 1 performs only time/state advancement.
+        self._sync_world_time()
 
-        Returns:
-            The amount of simulated time advanced.
-
-        Raises:
-            RuntimeError: if the simulation is not initialized.
-            RuntimeError: if the simulation has already finished.
-            RuntimeError: if the maximum tick limit is exceeded.
-        """
-        self._require_initialized()
-
-        if self.is_finished:
-            raise RuntimeError(
-                "Simulation has already reached its configured duration."
-            )
-
-        if self.clock.current_tick >= MAX_SIMULATION_TICKS:
-            raise RuntimeError(
-                "Maximum simulation tick limit exceeded."
-            )
-
-        delta_time = self.clock.step()
-
-        self.world.advance_time(delta_time)
-
-        self.world.world_state.record_event(
+        self.world.state.events.append(
             {
-                "type": "SIMULATION_TICK",
-                "tick": self.clock.current_tick,
-                "simulation_time": self.clock.elapsed_time,
-                "delta_time": delta_time,
+                "type": "SIMULATION_INITIALIZED",
+                "calamity": (
+                    self.scenario
+                    .calamity_type
+                    .value
+                ),
             }
         )
 
-        return delta_time
+        self._initialized = True
+        self._paused = False
 
-    def run_until_complete(self) -> None:
-        """
-        Advance the simulation until its configured duration is reached.
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
-        Phase 1 only advances time. Later phases will execute the full
-        disaster-response pipeline inside step().
-        """
-        self._require_initialized()
+    def pause(self) -> None:
+        self._paused = True
 
-        while not self.is_finished:
-            self.step()
-
-    def reset(self) -> None:
-        """
-        Reset the simulation back to an uninitialized state.
-        """
-        self.world.reset()
-        self.clock.reset()
-        self._initialized = False
-
-        # Recreate the deterministic random generator so that
-        # rerunning the same scenario with the same seed produces
-        # the same random sequence.
-        self.random = random.Random(
-            self.scenario.random_seed
-        )
-
-    def _require_initialized(self) -> None:
-        """
-        Ensure the engine has been initialized before execution.
-        """
+    def resume(self) -> None:
         if not self._initialized:
             raise RuntimeError(
-                "SimulationEngine has not been initialized."
+                "Simulation must be initialized before resuming."
             )
+
+        self._paused = False
+
+    def reset(self) -> None:
+        self.clock.reset()
+        self.world.reset()
+
+        self._agent_manager = None
+
+        self._initialized = False
+        self._paused = False
+
+    # ------------------------------------------------------------------
+    # Simulation progression
+    # ------------------------------------------------------------------
+
+    def step(self) -> None:
+        """
+        Advance the simulation by exactly one tick.
+        """
+
+        if not self._initialized:
+            self.initialize()
+
+        if self._paused:
+            raise RuntimeError(
+                "Simulation is paused."
+            )
+
+        if self.is_complete:
+            raise RuntimeError(
+                "Simulation duration has already been reached."
+            )
+
+        delta_time = self.clock.advance()
+
+        self._sync_world_time()
+
+        self._update_agents(
+            delta_time
+        )
+
+        self._update_basic_metrics()
+
+        self.world.state.events.append(
+            {
+                "type": "SIMULATION_TICK",
+                "tick": self.clock.current_tick,
+            }
+        )
+
+    def run(self) -> None:
+        """
+        Run the simulation until its configured duration.
+        """
+
+        if not self._initialized:
+            self.initialize()
+
+        while not self.is_complete:
+            self.step()
+
+    # ------------------------------------------------------------------
+    # Existing agent subsystem integration
+    # ------------------------------------------------------------------
+
+    def _update_agents(
+        self,
+        delta_time: float,
+    ) -> None:
+
+        if self._agent_manager is None:
+            return
+
+        safe_centers = [
+            entity
+            for entity in (
+                self.world.state.get_entities()
+            )
+            if isinstance(
+                entity,
+                Facility,
+            )
+            and entity.is_safe_center
+            and entity.is_operational
+            and entity.available_capacity > 0
+        ]
+
+        self._agent_manager.update_all(
+            delta_time=delta_time,
+            safe_centers=safe_centers,
+        )
+
+    # ------------------------------------------------------------------
+    # World synchronization
+    # ------------------------------------------------------------------
+
+    def _sync_world_time(self) -> None:
+        self.world.state.current_tick = (
+            self.clock.current_tick
+        )
+
+        self.world.state.simulation_time = (
+            self.clock.simulation_time
+        )
+
+    def _update_basic_metrics(self) -> None:
+        if self._agent_manager is None:
+            return
+
+        agents = (
+            self._agent_manager.get_agents()
+        )
+
+        self.world.state.metrics[
+            "agent_count"
+        ] = float(len(agents))
+
+        self.world.state.metrics[
+            "normal_agents"
+        ] = float(
+            len(
+                self._agent_manager
+                .get_normal_agents()
+            )
+        )
+
+        self.world.state.metrics[
+            "panicked_agents"
+        ] = float(
+            len(
+                self._agent_manager
+                .get_panicked_agents()
+            )
+        )
+
+        self.world.state.metrics[
+            "safe_agents"
+        ] = float(
+            len(
+                self._agent_manager
+                .get_safe_agents()
+            )
+        )

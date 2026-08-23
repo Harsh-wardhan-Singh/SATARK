@@ -1,24 +1,23 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
-from core.constants import DEFAULT_TICK_RATE
+from core.constants import MAX_SIMULATION_TICKS
 
 
 @dataclass
 class SimulationClock:
     """
-    Controls deterministic simulation time.
+    Controls deterministic simulation time progression.
 
-    SimulationClock is responsible for determining the duration of each
-    simulation tick. It does not modify WorldState directly.
-
-    WorldState remains responsible for storing the authoritative
-    simulation time and tick count.
+    The clock only manages time.
+    It does not execute simulation logic.
     """
 
-    tick_rate: float = DEFAULT_TICK_RATE
+    tick_rate: float
 
     current_tick: int = 0
-    elapsed_time: float = 0.0
+    simulation_time: float = 0.0
 
     def __post_init__(self) -> None:
         if self.tick_rate <= 0:
@@ -29,42 +28,32 @@ class SimulationClock:
     @property
     def delta_time(self) -> float:
         """
-        Return the fixed amount of simulated time represented by one tick.
-
-        Example:
-            tick_rate = 10
-            delta_time = 0.1 seconds
+        Amount of simulation time represented by one tick.
         """
         return 1.0 / self.tick_rate
 
-    def step(self) -> float:
+    def advance(self) -> float:
         """
-        Advance the simulation clock by exactly one tick.
+        Advance the simulation by one tick.
 
         Returns:
-            The amount of simulated time advanced.
+            The delta time for the tick.
         """
-        delta_time = self.delta_time
+
+        if self.current_tick >= MAX_SIMULATION_TICKS:
+            raise RuntimeError(
+                "Maximum simulation tick limit reached."
+            )
 
         self.current_tick += 1
-        self.elapsed_time += delta_time
+        self.simulation_time += self.delta_time
 
-        return delta_time
+        return self.delta_time
 
     def reset(self) -> None:
         """
-        Reset the clock to its initial state.
+        Reset the clock.
         """
+
         self.current_tick = 0
-        self.elapsed_time = 0.0
-
-    def has_reached(self, duration: float) -> bool:
-        """
-        Return whether the requested simulation duration has been reached.
-        """
-        if duration <= 0:
-            raise ValueError(
-                "Simulation duration must be greater than 0."
-            )
-
-        return self.elapsed_time >= duration
+        self.simulation_time = 0.0
