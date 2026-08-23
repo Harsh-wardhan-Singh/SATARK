@@ -1,5 +1,6 @@
 ---
 trigger: glob
+globs: frontend/**
 ---
 
 # SATARK Frontend Architecture Rules

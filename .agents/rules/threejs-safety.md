@@ -1,5 +1,6 @@
 ---
 trigger: glob
+globs: frontend/src/city/**
 ---
 
 # NEXUS Three.js Renderer Safety Rules
