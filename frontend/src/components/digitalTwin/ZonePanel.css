@@ -1,24 +1,73 @@
 .zone-panel {
-  background-color: #1e1e1e;
-  border: 1px solid #333;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  color: #e0e0e0;
-  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: #e2e8f0;
 }
 
 .zone-panel h3 {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  border-bottom: 1px solid #333;
-  padding-bottom: 0.5rem;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: 1.5px;
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 8px;
+}
+
+.zone-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .zone-details p {
-  margin: 0.5rem 0;
+  margin: 0;
+  font-size: 13px;
 }
 
-.empty-state p {
-  color: #888;
-  font-style: italic;
+.zone-details strong {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.zone-panel-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.zone-panel-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  letter-spacing: 0.03em;
+}
+
+.zone-panel-btn-primary {
+  background-color: #1e3a5f;
+  border-color: #2563eb;
+  color: #60a5fa;
+}
+
+.zone-panel-btn-primary:hover {
+  background-color: #1e40af;
+  color: #93bbfd;
+}
+
+.zone-panel-btn-secondary {
+  background-color: #1e293b;
+  color: #94a3b8;
+  border-color: #334155;
+}
+
+.zone-panel-btn-secondary:hover {
+  background-color: #334155;
+  color: #e2e8f0;
 }

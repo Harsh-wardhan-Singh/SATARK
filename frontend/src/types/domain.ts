@@ -31,13 +31,4 @@ export interface Calamity {
   active: boolean;
 }
 
-export interface SimulationSnapshot {
-  tick: number;
-  // Will contain backend data later
-}
-
-export interface Simulation {
-  activeCalamity: Calamity | null;
-  status: 'idle' | 'running' | 'paused';
-  currentTick: number;
-}
+export * from './simulation';

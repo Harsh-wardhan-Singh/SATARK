@@ -9,11 +9,31 @@ export const ZonePanel: React.FC = () => {
   const isSafeZone = safeZones.some(sz => sz.zoneId === selectedZoneId);
   const safeZoneData = safeZones.find(sz => sz.zoneId === selectedZoneId);
 
+  const handleFocusZone = () => {
+    if (selectedZoneId) {
+      window.dispatchEvent(
+        new CustomEvent('satark:camera-focus-zone', {
+          detail: { zoneId: selectedZoneId, force: true },
+        })
+      );
+    }
+  };
+
+  const handleResetOverview = () => {
+    window.dispatchEvent(new CustomEvent('satark:camera-reset-overview'));
+  };
+
   if (!selectedZoneId) {
     return (
       <div className="zone-panel empty-state">
         <h3>Zone Information</h3>
         <p>No zone selected. Click on a zone overlay in the digital twin to view its information.</p>
+        <button
+          className="zone-panel-btn zone-panel-btn-secondary"
+          onClick={handleResetOverview}
+        >
+          Reset Overview
+        </button>
       </div>
     );
   }
@@ -23,7 +43,12 @@ export const ZonePanel: React.FC = () => {
       <div className="zone-panel error-state">
         <h3>Error</h3>
         <p>Selected zone not found in world state.</p>
-        <button onClick={() => setSelectedZoneId(null)}>Clear Selection</button>
+        <button
+          className="zone-panel-btn zone-panel-btn-secondary"
+          onClick={() => setSelectedZoneId(null)}
+        >
+          Clear Selection
+        </button>
       </div>
     );
   }
@@ -44,12 +69,21 @@ export const ZonePanel: React.FC = () => {
           )}
         </p>
       </div>
-      <button 
-        onClick={() => setSelectedZoneId(null)} 
-        style={{ marginTop: '1rem', padding: '0.5rem', background: '#333', color: 'white', border: '1px solid #555', borderRadius: '4px', cursor: 'pointer', width: '100%' }}
-      >
-        Deselect Zone
-      </button>
+      <div className="zone-panel-actions">
+        <button
+          className="zone-panel-btn zone-panel-btn-primary"
+          onClick={handleFocusZone}
+        >
+          Focus Camera
+        </button>
+        <button
+          className="zone-panel-btn zone-panel-btn-secondary"
+          onClick={() => setSelectedZoneId(null)}
+        >
+          Deselect Zone
+        </button>
+      </div>
     </div>
   );
 };
+

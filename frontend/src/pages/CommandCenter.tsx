@@ -1,22 +1,25 @@
 import React from 'react';
 import { CommandCenterLayout } from '../components/layout/CommandCenterLayout';
 import { CityScene } from '../components/twin/CityScene';
-import { SimulationControls } from '../components/simulation/SimulationControls';
-import { ZonePanel } from '../components/digitalTwin/ZonePanel';
-import { StatusBar } from '../components/telemetry/StatusBar';
+import { CommandHeader } from '../components/layout/CommandHeader';
+import { TimelineBar } from '../components/layout/TimelineBar';
+import { LeftPanel } from '../components/workflow/LeftPanel';
+import { RightPanel } from '../components/workflow/RightPanel';
+import { CompactControls } from '../components/workflow/CompactControls';
 
 export const CommandCenter: React.FC = () => {
   return (
     <CommandCenterLayout
-      header={<h2>SATARK Command Center</h2>}
-      sidebar={
+      header={<CommandHeader />}
+      leftSidebar={<LeftPanel />}
+      rightSidebar={<RightPanel />}
+      main={
         <>
-          <ZonePanel />
-          <SimulationControls />
+          <CityScene />
+          <CompactControls />
         </>
       }
-      main={<CityScene />}
-      footer={<StatusBar />}
+      footer={<TimelineBar />}
     />
   );
 };

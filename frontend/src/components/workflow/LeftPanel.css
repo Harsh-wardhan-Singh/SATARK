@@ -1,0 +1,111 @@
+.left-panel {
+  width: 340px;
+  background-color: #0b0f19;
+  border-right: 1px solid #1e293b;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex-shrink: 0;
+}
+
+/* Scrollbar styling for panel */
+.left-panel::-webkit-scrollbar {
+  width: 4px;
+}
+.left-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.left-panel::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 2px;
+}
+
+.panel-content {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.panel-placeholder {
+  color: #475569;
+  font-size: 13px;
+  text-align: center;
+  padding: 32px 0;
+}
+
+/* ─── Disaster Monitoring (Active) ─── */
+
+.disaster-monitoring h3,
+.intervention-impact h3 {
+  margin: 0 0 16px 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e2e8f0;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 10px;
+}
+
+.monitoring-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #1e293b;
+}
+
+.stat-row:last-child {
+  border-bottom: none;
+}
+
+.stat-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.08em;
+}
+
+.stat-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #cbd5e1;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.backend-pending {
+  margin-top: 20px;
+  font-size: 11px;
+  color: #475569;
+  font-style: italic;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ─── Intervention Impact (Finished) ─── */
+
+.impact-section {
+  margin-bottom: 16px;
+}
+
+.impact-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.08em;
+}
+
+.no-data {
+  color: #475569;
+  font-size: 13px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  margin: 0;
+}
