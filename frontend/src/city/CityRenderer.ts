@@ -248,6 +248,13 @@ export class CityRenderer {
     // ── Collision meshes: solid city geometry (buildings, roads) for freecam collision ──
     private collisionMeshes: THREE.Object3D[] = [];
 
+    /**
+     * Returns the scene instance for attaching additional render layers.
+     */
+    public getScene(): THREE.Scene {
+        return this.scene;
+    }
+
     // ── City bounds and default camera view metadata ──
     private defaultCameraPosition: THREE.Vector3 | null = null;
     private defaultControlsTarget: THREE.Vector3 | null = null;

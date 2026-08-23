@@ -5,6 +5,8 @@ import { AgentRenderer } from '../../city/agents/AgentRenderer';
 import { CameraController } from '../../city/camera/CameraController';
 import { CityStateAdapter } from '../../city/CityStateAdapter';
 import { CityInteraction } from '../../city/CityInteraction';
+import { DisasterRenderer } from '../../city/calamities/DisasterRenderer';
+import { InfrastructureRenderer } from '../../city/infrastructure/InfrastructureRenderer';
 import { fetchZones, fetchSafeZones, fetchWorldBounds } from '../../api/worldApi';
 import { useStore } from '../../store';
 import { WorldBounds } from '../../city/zones/voronoi';
@@ -16,6 +18,8 @@ export const CityScene: React.FC = () => {
   const zoneRendererRef = useRef<ZoneRenderer | null>(null);
   const agentRendererRef = useRef<AgentRenderer | null>(null);
   const cameraControllerRef = useRef<CameraController | null>(null);
+  const disasterRendererRef = useRef<DisasterRenderer | null>(null);
+  const infrastructureRendererRef = useRef<InfrastructureRenderer | null>(null);
   const stateAdapterRef = useRef<CityStateAdapter | null>(null);
   const interactionRef = useRef<CityInteraction | null>(null);
   const worldBoundsRef = useRef<WorldBounds | null>(null);
@@ -78,6 +82,12 @@ export const CityScene: React.FC = () => {
       const cameraController = new CameraController(renderer);
       cameraControllerRef.current = cameraController;
 
+      const disasterRenderer = new DisasterRenderer(renderer.getScene());
+      disasterRendererRef.current = disasterRenderer;
+
+      const infrastructureRenderer = new InfrastructureRenderer(renderer.getScene());
+      infrastructureRendererRef.current = infrastructureRenderer;
+
       // Pass terrain footprint for accurate zone boundary clipping and camera bounds
       const terrainFootprint = renderer.getTerrainFootprint();
       if (terrainFootprint) {
@@ -91,7 +101,13 @@ export const CityScene: React.FC = () => {
         cameraController.setWorldBounds(worldBoundsRef.current);
       }
 
-      const stateAdapter = new CityStateAdapter(zoneRenderer, agentRenderer, cameraController);
+      const stateAdapter = new CityStateAdapter(
+        zoneRenderer, 
+        agentRenderer, 
+        cameraController,
+        disasterRenderer,
+        infrastructureRenderer
+      );
       stateAdapterRef.current = stateAdapter;
 
       const interaction = new CityInteraction(containerRef.current!, renderer, zoneRenderer, cameraController);
@@ -122,6 +138,8 @@ export const CityScene: React.FC = () => {
       cameraControllerRef.current?.dispose();
       agentRendererRef.current?.dispose();
       zoneRendererRef.current?.dispose();
+      disasterRendererRef.current?.dispose();
+      infrastructureRendererRef.current?.dispose();
       renderer.dispose();
       
       interactionRef.current = null;
@@ -129,6 +147,8 @@ export const CityScene: React.FC = () => {
       cameraControllerRef.current = null;
       agentRendererRef.current = null;
       zoneRendererRef.current = null;
+      disasterRendererRef.current = null;
+      infrastructureRendererRef.current = null;
       rendererRef.current = null;
     };
   }, []);

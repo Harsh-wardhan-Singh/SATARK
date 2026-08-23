@@ -1,0 +1,58 @@
+.command-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.command-header-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.command-header-brand h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #fff;
+}
+
+.brand-subtitle {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: #64748b;
+}
+
+.command-header-metrics {
+  display: flex;
+  gap: 28px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metric-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: 1px;
+}
+
+.metric-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e2e8f0;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.status-idle { color: #64748b; }
+.status-running { color: #10b981; }
+.status-paused { color: #f59e0b; }
+.status-completed { color: #3b82f6; }
+.status-disconnected { color: #ef4444; }
