@@ -3,14 +3,16 @@ import './CommandCenterLayout.css';
 
 interface CommandCenterLayoutProps {
   header: React.ReactNode;
-  sidebar: React.ReactNode;
+  leftSidebar: React.ReactNode;
+  rightSidebar: React.ReactNode;
   main: React.ReactNode;
   footer: React.ReactNode;
 }
 
 export const CommandCenterLayout: React.FC<CommandCenterLayoutProps> = ({
   header,
-  sidebar,
+  leftSidebar,
+  rightSidebar,
   main,
   footer,
 }) => {
@@ -18,8 +20,9 @@ export const CommandCenterLayout: React.FC<CommandCenterLayoutProps> = ({
     <div className="layout-container">
       <header className="layout-header">{header}</header>
       <div className="layout-body">
-        <aside className="layout-sidebar">{sidebar}</aside>
+        {leftSidebar}
         <main className="layout-main">{main}</main>
+        {rightSidebar}
       </div>
       <footer className="layout-footer">{footer}</footer>
     </div>

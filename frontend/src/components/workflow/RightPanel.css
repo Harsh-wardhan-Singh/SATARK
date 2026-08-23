@@ -1,0 +1,152 @@
+.right-panel {
+  width: 340px;
+  background-color: #0b0f19;
+  border-left: 1px solid #1e293b;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex-shrink: 0;
+}
+
+/* Scrollbar styling */
+.right-panel::-webkit-scrollbar {
+  width: 4px;
+}
+.right-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.right-panel::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 2px;
+}
+
+/* ─── Risk Section (Active Disaster) ─── */
+
+.risk-section {
+  background-color: #111827;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.risk-section h3 {
+  margin: 0 0 12px 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e2e8f0;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 10px;
+}
+
+.risk-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #475569;
+  text-align: center;
+  margin: 16px 0;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* ─── Interventions (Active Disaster) ─── */
+
+.interventions-section h3 {
+  margin: 0 0 12px 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e2e8f0;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 10px;
+}
+
+.intervention-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.intervention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: #0f172a;
+  border: 1px solid #1e293b;
+  padding: 10px 12px;
+  border-radius: 3px;
+}
+
+.intervention-item label {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.intervention-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.apply-btn {
+  width: 100%;
+  padding: 10px;
+  background-color: #10b981;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  letter-spacing: 0.08em;
+  font-family: inherit;
+}
+
+.apply-btn:disabled {
+  background-color: #1e293b;
+  color: #475569;
+  cursor: not-allowed;
+}
+
+/* ─── Final Summary (Finished Disaster) ─── */
+
+.final-summary h3 {
+  margin: 0 0 12px 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e2e8f0;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 10px;
+}
+
+.summary-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 24px;
+}
+
+.close-disaster-btn {
+  width: 100%;
+  padding: 10px;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  letter-spacing: 0.08em;
+  font-family: inherit;
+  margin-top: auto;
+}
+
+.close-disaster-btn:hover {
+  background-color: #2563eb;
+}
