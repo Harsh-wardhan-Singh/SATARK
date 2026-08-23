@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { CityRenderer } from '../../city/CityRenderer';
 import { ZoneRenderer } from '../../city/zones/ZoneRenderer';
 import { AgentRenderer } from '../../city/agents/AgentRenderer';
+import { CameraController } from '../../city/camera/CameraController';
 import { CityStateAdapter } from '../../city/CityStateAdapter';
 import { CityInteraction } from '../../city/CityInteraction';
 import { fetchZones, fetchSafeZones, fetchWorldBounds } from '../../api/worldApi';
@@ -14,6 +15,7 @@ export const CityScene: React.FC = () => {
   const rendererRef = useRef<CityRenderer | null>(null);
   const zoneRendererRef = useRef<ZoneRenderer | null>(null);
   const agentRendererRef = useRef<AgentRenderer | null>(null);
+  const cameraControllerRef = useRef<CameraController | null>(null);
   const stateAdapterRef = useRef<CityStateAdapter | null>(null);
   const interactionRef = useRef<CityInteraction | null>(null);
   const worldBoundsRef = useRef<WorldBounds | null>(null);
@@ -34,10 +36,13 @@ export const CityScene: React.FC = () => {
         useStore.getState().setSafeZones(safeZones);
         worldBoundsRef.current = worldBounds;
 
-        // If zone renderer already exists (city loaded first), set bounds now
+        // If zone renderer or camera controller already exists, set bounds now
         if (zoneRendererRef.current) {
           zoneRendererRef.current.setWorldBounds(worldBounds);
           zoneRendererRef.current.updateZones(zones, safeZones);
+        }
+        if (cameraControllerRef.current) {
+          cameraControllerRef.current.setWorldBounds(worldBounds);
         }
       } catch (err) {
         console.error("Failed to load world data:", err);
@@ -60,7 +65,7 @@ export const CityScene: React.FC = () => {
     renderer.onLoadComplete = () => {
       setLoading(false);
       
-      // Initialize zone layer, agent layer, interaction, and state sync AFTER city loads
+      // Initialize zone layer, agent layer, camera controller, interaction, and state sync AFTER city loads
       const zoneRenderer = new ZoneRenderer(renderer);
       zoneRendererRef.current = zoneRenderer;
 
@@ -70,21 +75,26 @@ export const CityScene: React.FC = () => {
         console.error("Failed to load agent model:", err);
       });
 
-      // Pass terrain footprint for accurate zone boundary clipping
+      const cameraController = new CameraController(renderer);
+      cameraControllerRef.current = cameraController;
+
+      // Pass terrain footprint for accurate zone boundary clipping and camera bounds
       const terrainFootprint = renderer.getTerrainFootprint();
       if (terrainFootprint) {
         zoneRenderer.setTerrainFootprint(terrainFootprint);
+        cameraController.setTerrainFootprint(terrainFootprint);
       }
 
       // If world bounds already loaded, set them before state adapter syncs
       if (worldBoundsRef.current) {
         zoneRenderer.setWorldBounds(worldBoundsRef.current);
+        cameraController.setWorldBounds(worldBoundsRef.current);
       }
 
-      const stateAdapter = new CityStateAdapter(zoneRenderer, agentRenderer);
+      const stateAdapter = new CityStateAdapter(zoneRenderer, agentRenderer, cameraController);
       stateAdapterRef.current = stateAdapter;
 
-      const interaction = new CityInteraction(containerRef.current!, renderer, zoneRenderer);
+      const interaction = new CityInteraction(containerRef.current!, renderer, zoneRenderer, cameraController);
       interactionRef.current = interaction;
     };
 
@@ -109,12 +119,14 @@ export const CityScene: React.FC = () => {
       resizeObserver.disconnect();
       interactionRef.current?.dispose();
       stateAdapterRef.current?.dispose();
+      cameraControllerRef.current?.dispose();
       agentRendererRef.current?.dispose();
       zoneRendererRef.current?.dispose();
       renderer.dispose();
       
       interactionRef.current = null;
       stateAdapterRef.current = null;
+      cameraControllerRef.current = null;
       agentRendererRef.current = null;
       zoneRendererRef.current = null;
       rendererRef.current = null;

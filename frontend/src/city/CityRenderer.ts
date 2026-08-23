@@ -213,9 +213,16 @@ export class CityRenderer {
     private container: HTMLElement;
     private renderer: THREE.WebGLRenderer;
     private scene: THREE.Scene;
-    private camera: THREE.PerspectiveCamera;
+    
+    // Dual camera system: Orthographic (strategic map) + Perspective (freecam 3D inspection)
+    private orthographicCamera: THREE.OrthographicCamera;
+    private perspectiveCamera: THREE.PerspectiveCamera;
+    private activeCamera: THREE.Camera;
+    private cameraMode: 'orthographic' | 'freecam' = 'orthographic';
+
     private controls!: OrbitControls;
     private composer!: EffectComposer;
+    private renderPass!: RenderPass;
     private gtaoPass!: GTAOPass;
     private animationFrameId: number | null = null;
     private clock = new THREE.Clock();
@@ -233,8 +240,20 @@ export class CityRenderer {
     
     private directionalLight!: THREE.DirectionalLight;
 
-    // ── Terrain footprint (extracted once after GLB loads) ──
+    // ── Terrain footprint and meshes (extracted once after GLB loads) ──
+    private terrainMeshes: THREE.Mesh[] = [];
     private terrainFootprint: Point2D[] | null = null;
+    private terrainCentroid: THREE.Vector3 | null = null;
+
+    // ── Collision meshes: solid city geometry (buildings, roads) for freecam collision ──
+    private collisionMeshes: THREE.Object3D[] = [];
+
+    // ── City bounds and default camera view metadata ──
+    private defaultCameraPosition: THREE.Vector3 | null = null;
+    private defaultControlsTarget: THREE.Vector3 | null = null;
+    private cityCenter: THREE.Vector3 | null = null;
+    private citySize: THREE.Vector3 | null = null;
+    private cityMaxDimension = 0;
 
     public onProgress?: (percent: number) => void;
     public onError?: (error: unknown) => void;
@@ -247,6 +266,176 @@ export class CityRenderer {
      */
     public getTerrainFootprint(): Point2D[] | null {
         return this.terrainFootprint;
+    }
+
+    /**
+     * Returns the terrain meshes collected during GLB load for raycasting.
+     */
+    public getTerrainMeshes(): THREE.Mesh[] {
+        return this.terrainMeshes;
+    }
+
+    /**
+     * Returns the collision meshes (buildings, roads, trees) for freecam camera collision.
+     */
+    public getCollisionMeshes(): THREE.Object3D[] {
+        return this.collisionMeshes;
+    }
+
+    /**
+     * Raycasts from `origin` in `direction` against collision meshes.
+     * Returns the nearest intersection within `maxDistance`, or null.
+     */
+    private collisionRaycaster = new THREE.Raycaster();
+
+    public raycastCollision(
+        origin: THREE.Vector3,
+        direction: THREE.Vector3,
+        maxDistance: number
+    ): THREE.Intersection | null {
+        if (this.collisionMeshes.length === 0) return null;
+        this.collisionRaycaster.set(origin, direction);
+        this.collisionRaycaster.far = maxDistance;
+        this.collisionRaycaster.near = 0;
+        const intersects = this.collisionRaycaster.intersectObjects(this.collisionMeshes, true);
+        if (intersects.length > 0) {
+            return intersects[0];
+        }
+        return null;
+    }
+
+    /**
+     * Returns the centroid of the terrain footprint in world coordinates.
+     */
+    public getTerrainCentroid(): THREE.Vector3 | null {
+        return this.terrainCentroid ? this.terrainCentroid.clone() : null;
+    }
+
+    /**
+     * Returns current camera mode ('orthographic' or 'freecam').
+     */
+    public getCameraMode(): 'orthographic' | 'freecam' {
+        return this.cameraMode;
+    }
+
+    /**
+     * Set active camera mode.
+     */
+    public setCameraMode(mode: 'orthographic' | 'freecam'): void {
+        this.cameraMode = mode;
+        this.activeCamera = mode === 'orthographic' ? this.orthographicCamera : this.perspectiveCamera;
+        if (this.renderPass) this.renderPass.camera = this.activeCamera;
+        if (this.gtaoPass) this.gtaoPass.camera = this.activeCamera;
+        if (this.controls) {
+            this.controls.enabled = mode === 'orthographic';
+            if (mode === 'orthographic') {
+                this.controls.object = this.orthographicCamera;
+            }
+        }
+    }
+
+    /**
+     * Returns the active camera instance.
+     */
+    public getActiveCamera(): THREE.Camera {
+        return this.activeCamera;
+    }
+
+    /**
+     * Returns the orthographic camera.
+     */
+    public getOrthographicCamera(): THREE.OrthographicCamera {
+        return this.orthographicCamera;
+    }
+
+    /**
+     * Returns the perspective camera.
+     */
+    public getPerspectiveCamera(): THREE.PerspectiveCamera {
+        return this.perspectiveCamera;
+    }
+
+    /**
+     * Get current camera position without exposing camera internals directly.
+     */
+    public getCameraPosition(out: THREE.Vector3 = new THREE.Vector3()): THREE.Vector3 {
+        return out.copy(this.activeCamera.position);
+    }
+
+    /**
+     * Set active camera position.
+     */
+    public setCameraPosition(x: number, y: number, z: number): void {
+        this.activeCamera.position.set(x, y, z);
+    }
+
+    /**
+     * Get OrbitControls target without exposing OrbitControls directly.
+     */
+    public getControlsTarget(out: THREE.Vector3 = new THREE.Vector3()): THREE.Vector3 {
+        return out.copy(this.controls.target);
+    }
+
+    /**
+     * Set OrbitControls target.
+     */
+    public setControlsTarget(x: number, y: number, z: number): void {
+        this.controls.target.set(x, y, z);
+    }
+
+    /**
+     * Set OrbitControls constraints.
+     */
+    public setControlsLimits(limits: {
+        minDistance?: number;
+        maxDistance?: number;
+        minPolarAngle?: number;
+        maxPolarAngle?: number;
+    }): void {
+        if (limits.minDistance !== undefined) this.controls.minDistance = limits.minDistance;
+        if (limits.maxDistance !== undefined) this.controls.maxDistance = limits.maxDistance;
+        if (limits.minPolarAngle !== undefined) this.controls.minPolarAngle = limits.minPolarAngle;
+        if (limits.maxPolarAngle !== undefined) this.controls.maxPolarAngle = limits.maxPolarAngle;
+    }
+
+    /**
+     * Enable or disable OrbitControls (e.g. during animated camera transitions or in freecam).
+     */
+    public setControlsEnabled(enabled: boolean): void {
+        this.controls.enabled = enabled;
+    }
+
+    /**
+     * Update OrbitControls state.
+     */
+    public updateControls(): void {
+        if (this.controls && this.controls.enabled && this.cameraMode === 'orthographic') {
+            this.controls.update();
+        }
+    }
+
+    /**
+     * Returns the default overview camera position, target, and max dimension.
+     */
+    public getDefaultView(): { position: THREE.Vector3; target: THREE.Vector3; maxDimension: number } | null {
+        if (!this.defaultCameraPosition || !this.defaultControlsTarget) return null;
+        return {
+            position: this.defaultCameraPosition.clone(),
+            target: this.defaultControlsTarget.clone(),
+            maxDimension: this.cityMaxDimension,
+        };
+    }
+
+    /**
+     * Returns the bounding box metadata of the loaded city.
+     */
+    public getCityBounds(): { center: THREE.Vector3; size: THREE.Vector3; maxDimension: number } | null {
+        if (!this.cityCenter || !this.citySize) return null;
+        return {
+            center: this.cityCenter.clone(),
+            size: this.citySize.clone(),
+            maxDimension: this.cityMaxDimension,
+        };
     }
 
     private tickCallbacks = new Set<(delta: number, elapsedTime: number) => void>();
@@ -272,16 +461,65 @@ export class CityRenderer {
 
     public raycast(mouse: THREE.Vector2, objects: THREE.Object3D[]): THREE.Intersection[] {
         const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(mouse, this.camera);
+        raycaster.setFromCamera(mouse, this.activeCamera);
         return raycaster.intersectObjects(objects, false);
+    }
+
+    public raycastTerrain(mouse: THREE.Vector2): THREE.Intersection[] {
+        if (this.terrainMeshes.length === 0) return [];
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, this.activeCamera);
+        return raycaster.intersectObjects(this.terrainMeshes, true);
+    }
+
+    private terrainHeightRaycaster = new THREE.Raycaster();
+    private terrainDownVector = new THREE.Vector3(0, -1, 0);
+
+    /**
+     * Samples the exact terrain mesh surface height (Y coordinate) at world (x, z).
+     * Falls back to terrainCentroid.y, cityCenter.y, or fallbackY if raycast misses or terrain not loaded.
+     */
+    public getTerrainHeightAt(x: number, z: number, fallbackY = 0): number {
+        const defaultY = this.terrainCentroid
+            ? this.terrainCentroid.y
+            : (this.cityCenter ? this.cityCenter.y : fallbackY);
+
+        if (this.terrainMeshes.length === 0) {
+            return defaultY;
+        }
+
+        const originY = (this.cityCenter ? this.cityCenter.y : 0) + (this.cityMaxDimension ? this.cityMaxDimension : 5000);
+        this.terrainHeightRaycaster.set(
+            new THREE.Vector3(x, originY, z),
+            this.terrainDownVector
+        );
+        this.terrainHeightRaycaster.far = (this.cityMaxDimension ? this.cityMaxDimension * 2.5 : 20000);
+
+        const intersects = this.terrainHeightRaycaster.intersectObjects(this.terrainMeshes, true);
+        if (intersects.length > 0 && intersects[0].point) {
+            return intersects[0].point.y;
+        }
+
+        return defaultY;
     }
 
     constructor(container: HTMLElement) {
         this.container = container;
         
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(60, this.container.clientWidth / this.container.clientHeight, 0.1, 50000);
-        this.camera.position.set(700, 700, 700);
+
+        const aspect = this.container.clientWidth / Math.max(this.container.clientHeight, 1);
+
+        // Perspective camera for freecam 3D exploration
+        this.perspectiveCamera = new THREE.PerspectiveCamera(55, aspect, 0.1, 50000);
+        this.perspectiveCamera.position.set(700, 700, 700);
+
+        // Orthographic camera for strategic overview (starts as active)
+        this.orthographicCamera = new THREE.OrthographicCamera(-1000, 1000, 1000, -1000, 10, 50000);
+        this.orthographicCamera.position.set(700, 700, 700);
+
+        this.activeCamera = this.orthographicCamera;
+        this.cameraMode = 'orthographic';
 
         this.renderer = new THREE.WebGLRenderer({
             antialias: true,
@@ -325,11 +563,13 @@ export class CityRenderer {
         pmremGenerator.dispose();
 
         // Controls
-        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+        this.controls = new OrbitControls(this.activeCamera, this.renderer.domElement);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
-        this.controls.minDistance = 10;
+        this.controls.minDistance = 100;
         this.controls.maxDistance = 20000;
+        this.controls.maxPolarAngle = Math.PI * 0.47;
+        this.controls.minPolarAngle = Math.PI * 0.05;
 
         // Depth + Post-Processing
         this.scene.fog = new THREE.FogExp2(0xa8d7ef, 0.00038);
@@ -338,10 +578,10 @@ export class CityRenderer {
         this.composer.setPixelRatio(1.0);
         this.composer.setSize(this.container.clientWidth, this.container.clientHeight);
 
-        const renderPass = new RenderPass(this.scene, this.camera);
-        this.composer.addPass(renderPass);
+        this.renderPass = new RenderPass(this.scene, this.activeCamera);
+        this.composer.addPass(this.renderPass);
 
-        this.gtaoPass = new GTAOPass(this.scene, this.camera, this.container.clientWidth, this.container.clientHeight);
+        this.gtaoPass = new GTAOPass(this.scene, this.activeCamera, this.container.clientWidth, this.container.clientHeight);
         this.gtaoPass.updateGtaoMaterial({
             radius: 3.5,
             distanceExponent: 1.4,
@@ -378,6 +618,79 @@ export class CityRenderer {
         this.animate();
     }
 
+    /**
+     * Recomputes and applies the OrthographicCamera frustum based on the actual
+     * terrain footprint and the current viewport aspect ratio.
+     * Ensures the landmass fills most of the screen (~88%) with comfortable margins.
+     */
+    public updateOrthographicFrustum(width?: number, height?: number): void {
+        const w = width ?? this.container.clientWidth;
+        const h = height ?? Math.max(this.container.clientHeight, 1);
+        const aspect = w / h;
+
+        if (!this.terrainFootprint || this.terrainFootprint.length === 0) {
+            // Fallback before terrain footprint is loaded
+            const halfSize = (this.cityMaxDimension || 8000) * 0.5;
+            if (aspect >= 1) {
+                this.orthographicCamera.left = -halfSize * aspect;
+                this.orthographicCamera.right = halfSize * aspect;
+                this.orthographicCamera.top = halfSize;
+                this.orthographicCamera.bottom = -halfSize;
+            } else {
+                this.orthographicCamera.left = -halfSize;
+                this.orthographicCamera.right = halfSize;
+                this.orthographicCamera.top = halfSize / aspect;
+                this.orthographicCamera.bottom = -halfSize / aspect;
+            }
+            this.orthographicCamera.updateProjectionMatrix();
+            return;
+        }
+
+        // Project all terrain footprint points into the orthographic camera's view space
+        this.orthographicCamera.updateMatrixWorld(true);
+        const mat = this.orthographicCamera.matrixWorldInverse;
+        const yTarget = this.terrainCentroid ? this.terrainCentroid.y : (this.cityCenter ? this.cityCenter.y : 0);
+
+        let minVx = Infinity;
+        let maxVx = -Infinity;
+        let minVy = Infinity;
+        let maxVy = -Infinity;
+        const v = new THREE.Vector3();
+
+        for (const p of this.terrainFootprint) {
+            v.set(p.x, yTarget, p.z);
+            v.applyMatrix4(mat);
+            if (v.x < minVx) minVx = v.x;
+            if (v.x > maxVx) maxVx = v.x;
+            if (v.y < minVy) minVy = v.y;
+            if (v.y > maxVy) maxVy = v.y;
+        }
+
+        const projW = maxVx - minVx;
+        const projH = maxVy - minVy;
+        const projCenterX = (minVx + maxVx) / 2;
+        const projCenterY = (minVy + maxVy) / 2;
+
+        // 12% margin so the landmass fills ~88% of the viewport
+        const marginFactor = 1.12;
+        let halfW = (projW * marginFactor) / 2;
+        let halfH = (projH * marginFactor) / 2;
+
+        if (halfW / halfH > aspect) {
+            halfH = halfW / aspect;
+        } else {
+            halfW = halfH * aspect;
+        }
+
+        this.orthographicCamera.left = projCenterX - halfW;
+        this.orthographicCamera.right = projCenterX + halfW;
+        this.orthographicCamera.top = projCenterY + halfH;
+        this.orthographicCamera.bottom = projCenterY - halfH;
+        this.orthographicCamera.near = 10;
+        this.orthographicCamera.far = 50000;
+        this.orthographicCamera.updateProjectionMatrix();
+    }
+
     public load() {
         const loader = new GLTFLoader();
         
@@ -390,6 +703,7 @@ export class CityRenderer {
                 this.scene.add(city);
 
                 const terrainMeshes: THREE.Mesh[] = [];
+                const collisionMeshes: THREE.Object3D[] = [];
 
                 city.traverse((object: any) => {
                     if (!object.isMesh) return;
@@ -399,6 +713,7 @@ export class CityRenderer {
                     if (materialName === "MAT_BUILDINGS_HOLO") {
                         object.material = this.createBuildingToonMaterial(object);
                         object.castShadow = true;
+                        collisionMeshes.push(object);
                     } else if (materialName === "MAT_BUILDINGS_HOLO_LINES") {
                         object.visible = false;
                     } else if (materialName === "MAT_ROAD_LINES") {
@@ -419,13 +734,32 @@ export class CityRenderer {
                     }
                 });
 
-                // Extract terrain footprint for zone boundary clipping
+                // Extract terrain footprint for zone boundary clipping and camera framing
+                this.terrainMeshes = terrainMeshes;
+                this.collisionMeshes = collisionMeshes;
                 this.terrainFootprint = extractTerrainFootprint(terrainMeshes);
 
                 const box = new THREE.Box3().setFromObject(city);
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
                 const maxDimension = Math.max(size.x, size.y, size.z);
+
+                // Calculate landmass centroid from terrain footprint
+                if (this.terrainFootprint && this.terrainFootprint.length > 0) {
+                    let sumX = 0;
+                    let sumZ = 0;
+                    for (const p of this.terrainFootprint) {
+                        sumX += p.x;
+                        sumZ += p.z;
+                    }
+                    this.terrainCentroid = new THREE.Vector3(
+                        sumX / this.terrainFootprint.length,
+                        center.y,
+                        sumZ / this.terrainFootprint.length
+                    );
+                } else {
+                    this.terrainCentroid = center.clone();
+                }
 
                 const shadowCenter = center.clone();
                 const shadowFootprint = Math.max(size.x, size.z);
@@ -453,13 +787,37 @@ export class CityRenderer {
 
                 (this.scene.fog as THREE.FogExp2).density = 0.55 / maxDimension;
                 this.gtaoPass.setSceneClipBox(box);
-                
-                this.controls.target.copy(center);
-                this.camera.position.set(
-                    center.x + maxDimension * 0.45,
-                    center.y + maxDimension * 0.30,
-                    center.z + maxDimension * 0.45
-                );
+
+                // Store city metadata
+                this.cityCenter = center.clone();
+                this.citySize = size.clone();
+                this.cityMaxDimension = maxDimension;
+
+                // Strategic angled orientation (elevation angle ~35-40°, azimuth 45°)
+                const target = this.terrainCentroid.clone();
+                const camDir = new THREE.Vector3(0.55, 0.60, 0.55).normalize();
+                const orthoCamDist = 12000;
+                const defaultPos = target.clone().add(camDir.multiplyScalar(orthoCamDist));
+
+                this.defaultCameraPosition = defaultPos.clone();
+                this.defaultControlsTarget = target.clone();
+
+                // Position orthographic camera and orient towards landmass centroid
+                this.orthographicCamera.position.copy(defaultPos);
+                this.orthographicCamera.lookAt(target);
+                this.orthographicCamera.zoom = 1.0;
+                this.updateOrthographicFrustum();
+
+                // Setup perspective camera as well for seamless switch
+                this.perspectiveCamera.position.copy(defaultPos);
+                this.perspectiveCamera.lookAt(target);
+                this.perspectiveCamera.updateProjectionMatrix();
+
+                // OrbitControls configuration for orthographic mode
+                this.controls.minDistance = 100;
+                this.controls.maxDistance = maxDimension * 2.0;
+                this.controls.target.copy(target);
+                this.controls.object = this.activeCamera;
                 this.controls.update();
 
                 if (this.onLoadComplete) this.onLoadComplete();
@@ -480,8 +838,10 @@ export class CityRenderer {
     public resize(width: number, height: number) {
         if (this.isDisposed) return;
         
-        this.camera.aspect = width / height;
-        this.camera.updateProjectionMatrix();
+        this.perspectiveCamera.aspect = width / Math.max(height, 1);
+        this.perspectiveCamera.updateProjectionMatrix();
+
+        this.updateOrthographicFrustum(width, height);
         
         this.renderer.setSize(width, height);
         this.composer.setSize(width, height);
@@ -513,7 +873,9 @@ export class CityRenderer {
             }
         }
         
-        this.controls.update();
+        if (this.controls && this.controls.enabled && this.cameraMode === 'orthographic') {
+            this.controls.update();
+        }
         this.updateHolograms();
         this.composer.render();
     }
