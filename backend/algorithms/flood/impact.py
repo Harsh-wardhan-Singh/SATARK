@@ -1,19 +1,15 @@
-"""
-Flood impact calculation adapter.
+import joblib
+import os
+import numpy as np
+import pandas as pd
+import sys
 
-This module converts live flood state + zone metadata into the
-canonical ML feature schema and delegates prediction to ml.predict.
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-It does not load the ML model directly.
-"""
-
-from __future__ import annotations
-
-from typing import Any, Mapping
-
-from ml.features import zone_to_flood_features
-from ml.predict import FloodImpactPredictor
-
+from ml.features import build_flood_feature_row, normalize_flood_feature_frame
 
 class FloodImpactEngine:
     """
@@ -46,84 +42,30 @@ class FloodImpactEngine:
             else FloodImpactPredictor()
         )
 
-    def calculate_impacts(
-        self,
-        flood_states: Mapping[str, float],
-        zones_data: Mapping[
-            str,
-            Mapping[str, Any]
-        ],
-        severity: int,
-        day: int,
-        intervention: float,
-    ) -> dict[str, float]:
+    def calculate_impacts(self, flood_states, zones_data, severity, day, intervention_level):
         """
-        Calculate the flood impact score for every zone.
-
-        Args:
-            flood_states:
-                Mapping of zone ID -> current water level.
-
-            zones_data:
-                Mapping of zone ID -> zone metadata.
-
-            severity:
-                Flood severity level expected by the ML model.
-                Must be 1, 2, or 3.
-
-            day:
-                Simulation/disaster day expected by the ML model.
-                Must be within 1..7.
-
-            intervention:
-                Intervention level expected by the ML model.
-                Must be within 0..1.
-
-        Returns:
-            Mapping of zone ID -> impact score in [0, 1].
+        Takes current water levels from FloodPropagator and zone metadata,
+        and uses the ML model to predict the impact score (0.0 to 1.0) for each zone.
         """
+        impact_results = {}
+        
+        for zone_id, water_level in flood_states.items():
+            zone = zones_data.get(zone_id, {})
 
-        zone_features = []
-
-        zone_ids = []
-
-        for zone_id, water_level in (
-            flood_states.items()
-        ):
-            zone = zones_data.get(
-                zone_id,
-                {},
-            )
-
-            features = zone_to_flood_features(
-                zone_id=zone_id,
-                zone_data=zone,
-                water_level=float(
-                    water_level
-                ),
+            # Build the canonical training schema in the exact same order.
+            features = build_flood_feature_row(
+                elevation=zone.get('elevation', zone.get('center_normalized', {}).get('y', 0.5)),
+                flood_exposure=min(1.0, max(0.0, water_level / 2.0)),
                 severity=severity,
                 day=day,
-                intervention=intervention,
+                intervention=intervention_level,
+                drainage_weakness=1.0 - zone.get('drainage_capacity', zone.get('drainage_rate', 0.5)),
+                infra_vuln=zone.get('infra_vuln', zone.get('infrastructure_vulnerability', 0.5)),
             )
-
-            zone_ids.append(
-                zone_id
-            )
-
-            zone_features.append(
-                features
-            )
-
-        predictions = (
-            self.predictor.batch_predict(
-                zone_features
-            )
-        )
-
-        return {
-            zone_id: prediction
-            for zone_id, prediction in zip(
-                zone_ids,
-                predictions,
-            )
-        }
+            features = normalize_flood_feature_frame(pd.DataFrame([features]))
+            
+            # Predict impact using the ML model
+            predicted_impact = self.model.predict(features)[0]
+            impact_results[zone_id] = float(np.clip(predicted_impact, 0.0, 1.0))
+            
+        return impact_results

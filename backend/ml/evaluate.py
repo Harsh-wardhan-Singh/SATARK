@@ -1,10 +1,15 @@
 import pandas as pd
 import os
 import joblib
+import sys
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from ml.features import FLOOD_FEATURE_COLUMNS, normalize_flood_feature_frame
 
 def evaluate():
     model_path = os.path.join(SCRIPT_DIR, 'flood_impact_model.joblib')
@@ -13,8 +18,7 @@ def evaluate():
     model = joblib.load(model_path)
     df = pd.read_csv(data_path)
     
-    feature_cols = ['elevation', 'flood_exposure', 'severity', 'day', 'intervention', 'drainage_weakness', 'infra_vuln']
-    X = df[feature_cols]
+    X = normalize_flood_feature_frame(df)
     y_true = df['impact_score']
     
     y_pred = model.predict(X)
@@ -42,7 +46,7 @@ def evaluate():
     ]
     
     for case in edge_cases:
-        X_case = pd.DataFrame([case["features"]], columns=feature_cols)
+        X_case = pd.DataFrame([case["features"]], columns=FLOOD_FEATURE_COLUMNS)
         pred = model.predict(X_case)[0]
         print(f"{case['name']}\n Predicted Impact Score: {pred:.4f}\n")
 

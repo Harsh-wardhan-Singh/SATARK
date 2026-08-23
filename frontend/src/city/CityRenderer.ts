@@ -249,6 +249,19 @@ export class CityRenderer {
         return this.terrainFootprint;
     }
 
+    private tickCallbacks = new Set<(delta: number, elapsedTime: number) => void>();
+
+    /**
+     * Subscribe a callback to be invoked on every animation frame with delta time (seconds)
+     * and total elapsed time (seconds). Returns an unsubscribe function.
+     */
+    public onTick(callback: (delta: number, elapsedTime: number) => void): () => void {
+        this.tickCallbacks.add(callback);
+        return () => {
+            this.tickCallbacks.delete(callback);
+        };
+    }
+
     public addOverlay(object: THREE.Object3D): void {
         this.scene.add(object);
     }
@@ -489,6 +502,17 @@ export class CityRenderer {
         
         this.animationFrameId = requestAnimationFrame(this.animate);
         
+        const delta = this.clock.getDelta();
+        const elapsedTime = this.clock.getElapsedTime();
+
+        for (const cb of this.tickCallbacks) {
+            try {
+                cb(delta, elapsedTime);
+            } catch (err) {
+                console.error("Error in render tick callback:", err);
+            }
+        }
+        
         this.controls.update();
         this.updateHolograms();
         this.composer.render();
@@ -496,6 +520,7 @@ export class CityRenderer {
 
     public dispose() {
         this.isDisposed = true;
+        this.tickCallbacks.clear();
         if (this.animationFrameId !== null) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
