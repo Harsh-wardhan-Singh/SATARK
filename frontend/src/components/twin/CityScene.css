@@ -1,23 +1,27 @@
-.city-scene-placeholder {
+.city-scene-container {
   width: 100%;
   height: 100%;
+  position: relative;
+  overflow: hidden;
+  background: #050509;
+}
+
+.city-scene-container canvas {
+  display: block; /* prevents inline baseline gap */
+  width: 100% !important;
+  height: 100% !important;
+  outline: none;
+}
+
+.city-scene-loading {
+  position: absolute;
+  inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: #2a2a2a;
-  color: #fff;
-  border: 2px dashed #555;
-  box-sizing: border-box;
-}
-
-.city-scene-placeholder h1 {
-  margin: 0 0 10px 0;
-  font-size: 24px;
-  color: #ffaa00;
-}
-
-.city-scene-placeholder p {
-  margin: 0;
-  color: #aaa;
+  background: #08080c;
+  color: white;
+  font-size: 22px;
+  z-index: 10;
+  font-family: Arial, sans-serif;
 }
