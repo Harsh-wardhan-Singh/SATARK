@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from typing import Mapping
+
 class StateFeatureExtractor:
     def __init__(self, zone_ids, infra_ids):
         """
@@ -53,3 +56,174 @@ class StateFeatureExtractor:
             raise ValueError(f"Feature vector shape mismatch. Expected {self.vector_size}, got {len(feature_vector)}")
 
         return feature_vector
+
+FEATURE_NAMES = (
+    "elevation",
+    "flood_exposure",
+    "severity",
+    "day",
+    "intervention",
+    "drainage_weakness",
+    "infra_vuln",
+)
+
+
+@dataclass(frozen=True)
+class FloodImpactFeatures:
+    """
+    Canonical feature contract for the SATARK flood-impact model.
+
+    IMPORTANT:
+    The order of these fields must remain identical to FEATURE_NAMES
+    because the trained Random Forest model was trained using this schema.
+    """
+
+    elevation: float
+    flood_exposure: float
+    severity: int
+    day: int
+    intervention: float
+    drainage_weakness: float
+    infra_vuln: float
+
+    def as_dict(self) -> dict[str, float | int]:
+        """
+        Return features using the canonical model column names.
+        """
+        return {
+            "elevation": self.elevation,
+            "flood_exposure": self.flood_exposure,
+            "severity": self.severity,
+            "day": self.day,
+            "intervention": self.intervention,
+            "drainage_weakness": self.drainage_weakness,
+            "infra_vuln": self.infra_vuln,
+        }
+
+    def as_ordered_list(self) -> list[float | int]:
+        """
+        Return the feature vector in the exact training order.
+        """
+        return [
+            self.elevation,
+            self.flood_exposure,
+            self.severity,
+            self.day,
+            self.intervention,
+            self.drainage_weakness,
+            self.infra_vuln,
+        ]
+
+
+class FloodFeatureBuilder:
+    """
+    Constructs canonical flood-impact features from simulation inputs.
+
+    This class contains feature engineering only.
+
+    It does not:
+        - load the ML model
+        - call sklearn
+        - perform prediction
+        - modify WorldState
+    """
+
+    @staticmethod
+    def build(
+        *,
+        elevation: float,
+        flood_exposure: float,
+        severity: int,
+        day: int,
+        intervention: float,
+        drainage_weakness: float,
+        infra_vuln: float,
+    ) -> FloodImpactFeatures:
+        """
+        Construct and validate the canonical flood feature set.
+        """
+        elevation = float(elevation)
+        flood_exposure = float(flood_exposure)
+        severity = int(severity)
+        day = int(day)
+        intervention = float(intervention)
+        drainage_weakness = float(drainage_weakness)
+        infra_vuln = float(infra_vuln)
+
+        if not 0.0 <= elevation <= 1.0:
+            raise ValueError(
+                "elevation must be within [0.0, 1.0]."
+            )
+
+        if not 0.0 <= flood_exposure <= 1.0:
+            raise ValueError(
+                "flood_exposure must be within [0.0, 1.0]."
+            )
+
+        if severity not in (1, 2, 3):
+            raise ValueError(
+                "severity must be one of 1, 2, or 3."
+            )
+
+        if not 1 <= day <= 7:
+            raise ValueError(
+                "day must be within [1, 7]."
+            )
+
+        for name, value in (
+            ("intervention", intervention),
+            ("drainage_weakness", drainage_weakness),
+            ("infra_vuln", infra_vuln),
+        ):
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(
+                    f"{name} must be within [0.0, 1.0]."
+                )
+
+        return FloodImpactFeatures(
+            elevation=elevation,
+            flood_exposure=flood_exposure,
+            severity=severity,
+            day=day,
+            intervention=intervention,
+            drainage_weakness=drainage_weakness,
+            infra_vuln=infra_vuln,
+        )
+
+    @staticmethod
+    def from_mapping(
+        features: Mapping[str, float | int],
+    ) -> FloodImpactFeatures:
+        """
+        Construct canonical features from a mapping.
+
+        Rejects missing or unexpected fields so incompatible runtime
+        schemas cannot silently reach the model.
+        """
+        expected = set(FEATURE_NAMES)
+        received = set(features.keys())
+
+        missing = expected - received
+        unexpected = received - expected
+
+        if missing:
+            raise ValueError(
+                "Missing flood-impact features: "
+                + ", ".join(sorted(missing))
+            )
+
+        if unexpected:
+            raise ValueError(
+                "Unexpected flood-impact features: "
+                + ", ".join(sorted(unexpected))
+            )
+
+        return FloodFeatureBuilder.build(
+            elevation=features["elevation"],
+            flood_exposure=features["flood_exposure"],
+            severity=features["severity"],
+            day=features["day"],
+            intervention=features["intervention"],
+            drainage_weakness=features["drainage_weakness"],
+            infra_vuln=features["infra_vuln"],
+        )
