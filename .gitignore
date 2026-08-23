@@ -5,3 +5,5 @@ __pycache__/
 node_modules/
 dist/
 .vscode/
+backend/data/raw/flood_model_training.csv
+backend/ml/flood_impact_model.joblib
