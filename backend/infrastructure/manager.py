@@ -158,3 +158,24 @@ class InfrastructureManager:
             )
 
         facility.set_status(status)
+
+    # -------------------------------------------------------------------------
+    # Lifecycle
+    # -------------------------------------------------------------------------
+
+    def clear(self) -> None:
+        """
+        Remove all infrastructure entities from the authoritative
+        WorldState.
+
+        This does not clear unrelated simulation entities such as
+        HumanAgent instances.
+        """
+        for entity in list(self.world_state.get_entities()):
+            if isinstance(
+                entity,
+                (Road, Building, Facility),
+            ):
+                self.world_state.remove_entity(
+                    entity.id
+                )
