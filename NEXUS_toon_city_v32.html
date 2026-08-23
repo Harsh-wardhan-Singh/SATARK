@@ -1,0 +1,2617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEXUS GLB Toon Performance Test</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #050509;
+      font-family: Arial, sans-serif;
+    }
+    #app { width: 100%; height: 100%; }
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #08080c;
+      color: white;
+      font-size: 22px;
+      z-index: 10;
+    }
+    #stats {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      padding: 16px 20px;
+      background: rgba(0, 0, 0, 0.72);
+      color: white;
+      border-radius: 10px;
+      z-index: 5;
+      font-size: 15px;
+      line-height: 1.6;
+      pointer-events: none;
+      min-width: 250px;
+    }
+    #stats .warning {
+      margin-top: 12px;
+      color: #ffd34d;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading">Loading city.glb...</div>
+
+<div id="stats">
+  <div>FPS: <span id="fps">--</span></div>
+  <div>Triangles: <span id="triangles">--</span></div>
+  <div>Vertices: <span id="vertices">--</span></div>
+  <div>Meshes: <span id="meshes">--</span></div>
+  <div>Materials: <span id="materials">--</span></div>
+  <div>Textures: <span id="textures">--</span></div>
+  <div>Load time: <span id="loadTime">--</span></div>
+  <div class="warning">High geometry scene — performance test is meaningful.</div>
+</div>
+
+<div id="app"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+const container = document.getElementById("app");
+const scene = new THREE.Scene();
+
+
+/* ============================================================
+   PROCEDURAL SKY
+
+   A lightweight canvas background gives the city an actual daytime
+   sky instead of a flat black background.
+
+   The bright blue gradient and soft horizon haze provide stronger
+   silhouette and depth separation while keeping the city readable.
+   ============================================================ */
+
+function createSkyTexture()
+{
+  const texture =
+    new THREE.TextureLoader().load(
+      "sky_texture.jpg"
+    );
+
+  texture.colorSpace =
+    THREE.SRGBColorSpace;
+
+  texture.minFilter =
+    THREE.LinearFilter;
+
+  texture.magFilter =
+    THREE.LinearFilter;
+
+  texture.wrapS =
+    THREE.ClampToEdgeWrapping;
+
+  texture.wrapT =
+    THREE.ClampToEdgeWrapping;
+
+  texture.needsUpdate =
+    true;
+
+  return texture;
+}
+
+
+const skyTexture =
+  createSkyTexture();
+
+scene.background =
+  skyTexture;
+
+
+const camera = new THREE.PerspectiveCamera(
+  60,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  50000
+);
+camera.position.set(700, 700, 700);
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  powerPreference: "high-performance"
+});
+
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+// Shadows are deliberately constrained to one 1024px map.
+// The city and sun are static, so the shadow map is generated once
+// rather than being recalculated every frame.
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;
+
+// AgX gives the reflective materials a smoother highlight rolloff
+// than the old NoToneMapping pipeline.
+renderer.toneMapping = THREE.AgXToneMapping;
+renderer.toneMappingExposure = 1.0;
+
+container.appendChild(renderer.domElement);
+
+/* ============================================================
+   BUILDING REFLECTION ENVIRONMENT
+
+   A static studio environment gives the opaque building surfaces
+   something to reflect without requiring a real-time cube camera.
+   This is intentionally much cheaper than rendering the 17M+
+   triangle city into six reflection faces every frame.
+   ============================================================ */
+
+const pmremGenerator =
+  new THREE.PMREMGenerator(renderer);
+
+const reflectionEnvironment =
+  new RoomEnvironment(renderer);
+
+scene.environment =
+  pmremGenerator.fromScene(
+    reflectionEnvironment,
+    0.04
+  ).texture;
+
+reflectionEnvironment.dispose();
+pmremGenerator.dispose();
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.minDistance = 10;
+controls.maxDistance = 20000;
+
+
+/* ============================================================
+   SCENE DEPTH + POST-PROCESSING
+
+   The buildings/geometry stay untouched. These effects operate on
+   the rendered image/depth buffer:
+
+   1. Fog -> atmospheric depth
+   2. GTAO -> contact shadows / separation
+   3. Subtle bloom -> highlights feel luminous
+   4. OutputPass -> final color-space/tone-mapping output
+
+   GTAO is deliberately kept low-sample and the composer is capped
+   at 1x pixel ratio because the city is already ~17M triangles.
+   ============================================================ */
+
+scene.fog =
+  new THREE.FogExp2(
+    0xa8d7ef,
+    0.00038
+  );
+
+const composer =
+  new EffectComposer(
+    renderer
+  );
+
+// Keep post-processing at 1x rather than multiplying the already
+// expensive 1.5x renderer pixel ratio.
+composer.setPixelRatio(1.0);
+composer.setSize(
+  window.innerWidth,
+  window.innerHeight
+);
+
+const renderPass =
+  new RenderPass(
+    scene,
+    camera
+  );
+
+composer.addPass(
+  renderPass
+);
+
+
+// GTAO: adds subtle contact/crease shading so the city does not
+// read as a collection of floating flat meshes.
+const gtaoPass =
+  new GTAOPass(
+    scene,
+    camera,
+    window.innerWidth,
+    window.innerHeight
+  );
+
+gtaoPass.updateGtaoMaterial({
+  radius: 3.5,
+  distanceExponent: 1.4,
+  thickness: 1.0,
+  distanceFallOff: 1.0,
+  scale: 1.25,
+  samples: 8,
+  screenSpaceRadius: true
+});
+
+gtaoPass.blendIntensity =
+  0.75;
+
+composer.addPass(
+  gtaoPass
+);
+
+
+// Very restrained bloom. This is meant to catch bright reflections
+// and highlights, not turn the entire city into a glow stick.
+const bloomPass =
+  new UnrealBloomPass(
+    new THREE.Vector2(
+      window.innerWidth,
+      window.innerHeight
+    ),
+    0.18,   // strength
+    0.38,   // radius
+    0.82    // threshold
+  );
+
+composer.addPass(
+  bloomPass
+);
+
+
+const outputPass =
+  new OutputPass();
+
+composer.addPass(
+  outputPass
+);
+
+
+/* ============================================================
+   LIGHTING
+   The hologram itself is emissive/additive, so these lights
+   mainly affect the non-holographic parts of the city.
+   ============================================================ */
+
+scene.add(
+  new THREE.HemisphereLight(
+    0x9bbcff,
+    0x162016,
+    0.82
+  )
+);
+
+const directional =
+  new THREE.DirectionalLight(
+    0xffffff,
+    2.35
+  );
+
+directional.position.set(
+  500,
+  1200,
+  350
+);
+
+// One modest shadow map: enough for readable building shadows
+// without creating a huge second rendering workload.
+directional.castShadow = true;
+directional.shadow.mapSize.set(2048, 2048);
+directional.shadow.bias = -0.00025;
+directional.shadow.normalBias = 0.12;
+
+scene.add(
+  directional
+);
+
+/* ============================================================
+   ADAPTED HOLOGRAPHIC MATERIAL
+   Inspired by the MIT-licensed vanilla Three.js material by
+   Anderson Mancini (ektogamat). This version is embedded here
+   so the test remains a single HTML file.
+   ============================================================ */
+
+const holoVertexShader = `
+
+uniform float uTime;
+
+varying vec3 vPosition;
+varying vec3 vNormal;
+varying vec3 vWorldPosition;
+
+void main()
+{
+    // ----------------------------------------------------
+    // Model position
+    // ----------------------------------------------------
+
+    vec4 modelPosition =
+        modelMatrix * vec4(position, 1.0);
+
+
+    // ----------------------------------------------------
+    // Subtle holographic vertex glitch
+    // ----------------------------------------------------
+
+    float glitchWave =
+        sin(
+            modelPosition.y * 0.035
+            + uTime * 3.0
+        );
+
+    float glitchWave2 =
+        sin(
+            modelPosition.x * 0.08
+            + uTime * 4.0
+        );
+
+
+    // Keep the displacement VERY small.
+    // We don't want to deform the buildings noticeably.
+
+    float glitch =
+        glitchWave *
+        glitchWave2 *
+        0.35;
+
+
+    modelPosition.x +=
+        glitch * 0.12;
+
+    modelPosition.z +=
+        glitch * 0.08;
+
+
+    // ----------------------------------------------------
+    // Varyings
+    // ----------------------------------------------------
+
+    vPosition =
+        modelPosition.xyz;
+
+    vWorldPosition =
+        modelPosition.xyz;
+
+    vNormal =
+        normalize(
+            mat3(modelMatrix) * normal
+        );
+
+
+    // ----------------------------------------------------
+    // Final position
+    // ----------------------------------------------------
+
+    gl_Position =
+        projectionMatrix *
+        viewMatrix *
+        modelPosition;
+}
+
+`;
+
+const holoFragmentShader = `
+
+uniform float uTime;
+
+varying vec3 vPosition;
+varying vec3 vNormal;
+varying vec3 vWorldPosition;
+
+void main()
+{
+    // ====================================================
+    // 1. HOLOGRAM STRIPES
+    // ====================================================
+
+    // Repeating vertical position.
+    //
+    // We use position rather than UVs, following the
+    // technique from the Three.js Journey hologram lesson.
+
+    float stripe =
+        fract(
+            vPosition.y * 0.055
+        );
+
+
+    // Create a narrow bright band.
+
+    float stripeLine =
+        smoothstep(
+            0.47,
+            0.50,
+            stripe
+        )
+        *
+        (1.0 -
+        smoothstep(
+            0.50,
+            0.53,
+            stripe
+        ));
+
+
+    // ====================================================
+    // 2. SECOND FINE SCANLINE LAYER
+    // ====================================================
+
+    float fineStripe =
+        fract(
+            vPosition.y * 0.25
+            -
+            uTime * 0.15
+        );
+
+
+    float fineLine =
+        smoothstep(
+            0.47,
+            0.50,
+            fineStripe
+        )
+        *
+        (1.0 -
+        smoothstep(
+            0.50,
+            0.53,
+            fineStripe
+        ));
+
+
+    // ====================================================
+    // 3. FRESNEL
+    // ====================================================
+
+    vec3 viewDirection =
+        normalize(
+            cameraPosition -
+            vWorldPosition
+        );
+
+
+    float fresnel =
+        1.0 -
+        abs(
+            dot(
+                normalize(vNormal),
+                viewDirection
+            )
+        );
+
+
+    fresnel =
+        pow(
+            fresnel,
+            2.0
+        );
+
+
+    // ====================================================
+    // 4. HOLOGRAM COLORS
+    // ====================================================
+
+    vec3 purple =
+        vec3(
+            0.12,
+            0.005,
+            0.30
+        );
+
+
+    vec3 violet =
+        vec3(
+            0.75,
+            0.08,
+            1.0
+        );
+
+
+    vec3 cyan =
+        vec3(
+            0.0,
+            0.85,
+            1.0
+        );
+
+
+    // Base purple body.
+
+    vec3 color =
+        purple;
+
+
+    // Fresnel becomes cyan.
+
+    color =
+        mix(
+            color,
+            cyan,
+            fresnel * 0.9
+        );
+
+
+    // Bright scan bands become violet/cyan.
+
+    color +=
+        violet *
+        stripeLine *
+        2.5;
+
+
+    color +=
+        cyan *
+        fineLine *
+        0.35;
+
+
+    // ====================================================
+    // 5. MOVING DIGITAL GLITCH BAND
+    // ====================================================
+
+    float glitchBand =
+        sin(
+            vPosition.y * 0.12
+            +
+            uTime * 2.5
+        );
+
+
+    glitchBand =
+        smoothstep(
+            0.88,
+            0.98,
+            glitchBand
+        );
+
+
+    color +=
+        cyan *
+        glitchBand *
+        1.5;
+
+
+    // ====================================================
+    // 6. STRONG EDGE LIGHT
+    // ====================================================
+
+    color +=
+        cyan *
+        fresnel *
+        0.75;
+
+
+    // ====================================================
+    // 7. HOLOGRAM BRIGHTNESS
+    // ====================================================
+
+    color *=
+        0.55
+        +
+        fresnel * 0.65
+        +
+        stripeLine * 0.9;
+
+
+    // ====================================================
+    // 8. TRANSPARENCY
+    // ====================================================
+
+    float alpha =
+        0.22
+        +
+        fresnel * 0.30
+        +
+        stripeLine * 0.22
+        +
+        fineLine * 0.03;
+
+
+    alpha =
+        clamp(
+            alpha,
+            0.12,
+            0.95
+        );
+
+
+    gl_FragColor =
+        vec4(
+            color,
+            alpha
+        );
+}
+
+`;
+function createHologramMaterial() {
+  return new THREE.ShaderMaterial({
+    vertexShader: holoVertexShader,
+    fragmentShader: holoFragmentShader,
+
+    uniforms: {
+    uTime: {
+        value: 0.0
+    }
+    },
+
+    transparent: true,
+    depthTest: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+
+    // This is important for the glowing hologram look.
+    blending: THREE.AdditiveBlending
+  });
+}
+
+/* ============================================================
+   ROAD ENERGY FLOW MATERIAL
+
+   The road lines use world-space position rather than UVs.
+   This creates the illusion of energy traveling through the
+   road network without requiring UVs or additional geometry.
+   ============================================================ */
+
+const roadFlowVertexShader = `
+
+varying vec3 vWorldPosition;
+
+void main()
+{
+    vec4 worldPosition =
+        modelMatrix * vec4(position, 1.0);
+
+    vWorldPosition = worldPosition.xyz;
+
+    gl_Position =
+        projectionMatrix *
+        viewMatrix *
+        worldPosition;
+}
+
+`;
+
+
+const roadFlowFragmentShader = `
+
+uniform float uTime;
+
+varying vec3 vWorldPosition;
+
+
+void main()
+{
+    // ========================================================
+    // 1. WORLD POSITION
+    // ========================================================
+
+    vec2 position = vWorldPosition.xz;
+
+
+    // ========================================================
+    // 2. MULTIPLE FLOW DIRECTIONS
+    //
+    // We deliberately use several directions.
+    // Since the shader is only visible on road-line geometry,
+    // this creates the impression of energy moving through
+    // the road network.
+    // ========================================================
+
+    vec2 dir1 = normalize(vec2(1.0, 0.25));
+    vec2 dir2 = normalize(vec2(-0.35, 1.0));
+    vec2 dir3 = normalize(vec2(0.75, -0.65));
+
+
+    float flow1 =
+        dot(position, dir1) * 0.010
+        - uTime * 0.55;
+
+
+    float flow2 =
+        dot(position, dir2) * 0.008
+        - uTime * 0.40;
+
+
+    float flow3 =
+        dot(position, dir3) * 0.012
+        - uTime * 0.48;
+
+
+    // ========================================================
+    // 3. CREATE REPEATING ENERGY PULSES
+    // ========================================================
+
+    float pulse1 =
+        fract(flow1);
+
+
+    float pulse2 =
+        fract(flow2);
+
+
+    float pulse3 =
+        fract(flow3);
+
+
+    // ========================================================
+    // 4. SOFT PULSE SHAPES
+    //
+    // The center is bright and the edges fade smoothly.
+    // ========================================================
+
+    float energy1 =
+        smoothstep(
+            0.00,
+            0.18,
+            pulse1
+        )
+        *
+        (1.0 -
+        smoothstep(
+            0.18,
+            0.48,
+            pulse1
+        ));
+
+
+    float energy2 =
+        smoothstep(
+            0.00,
+            0.16,
+            pulse2
+        )
+        *
+        (1.0 -
+        smoothstep(
+            0.16,
+            0.42,
+            pulse2
+        ));
+
+
+    float energy3 =
+        smoothstep(
+            0.00,
+            0.16,
+            pulse3
+        )
+        *
+        (1.0 -
+        smoothstep(
+            0.16,
+            0.40,
+            pulse3
+        ));
+
+
+    // ========================================================
+    // 5. LONGER TRAILS
+    //
+    // A faint trail makes the pulse look like energy rather
+    // than a dot sliding along the line.
+    // ========================================================
+
+    float trail1 =
+        smoothstep(
+            0.00,
+            0.55,
+            pulse1
+        )
+        *
+        0.35;
+
+
+    float trail2 =
+        smoothstep(
+            0.00,
+            0.50,
+            pulse2
+        )
+        *
+        0.25;
+
+
+    float trail3 =
+        smoothstep(
+            0.00,
+            0.45,
+            pulse3
+        )
+        *
+        0.25;
+
+
+    // ========================================================
+    // 6. COMBINE ENERGY
+    // ========================================================
+
+    float energy =
+        energy1
+        +
+        energy2
+        +
+        energy3;
+
+
+    float trail =
+        trail1
+        +
+        trail2
+        +
+        trail3;
+
+
+    // ========================================================
+    // 7. COLORS
+    // ========================================================
+
+    vec3 baseColor =
+        vec3(
+            0.0,
+            0.35,
+            0.75
+        );
+
+
+    vec3 energyColor =
+        vec3(
+            0.0,
+            0.95,
+            1.0
+        );
+
+
+    vec3 whiteCore =
+        vec3(
+            0.65,
+            1.0,
+            1.0
+        );
+
+
+    // ========================================================
+    // 8. BASE ROAD-LINE GLOW
+    // ========================================================
+
+    vec3 color =
+        baseColor * 2.5;
+
+
+    // Soft energy trails
+    color +=
+        energyColor *
+        trail *
+        2.5;
+
+
+    // Bright moving cores
+    color +=
+        energyColor *
+        energy *
+        8.0;
+
+
+    // White-hot center of the pulse
+    color +=
+        whiteCore *
+        energy *
+        energy *
+        3.5;
+
+
+    // ========================================================
+    // 9. FINAL ALPHA
+    // ========================================================
+
+    float alpha =
+        0.65
+        +
+        trail * 0.20
+        +
+        energy * 0.35;
+
+
+    alpha =
+        clamp(
+            alpha,
+            0.55,
+            1.0
+        );
+
+
+    gl_FragColor =
+        vec4(
+            color,
+            alpha
+        );
+}
+
+`;
+
+
+function createRoadFlowMaterial()
+{
+    return new THREE.ShaderMaterial({
+
+        vertexShader:
+            roadFlowVertexShader,
+
+        fragmentShader:
+            roadFlowFragmentShader,
+
+        uniforms: {
+
+            uTime: {
+                value: 0.0
+            }
+
+        },
+
+        transparent: true,
+
+        depthTest: true,
+
+        depthWrite: false,
+
+        side: THREE.DoubleSide,
+
+        blending:
+            THREE.AdditiveBlending
+    });
+}
+
+
+
+/* ============================================================
+   TERRAIN + TOON MATERIALS
+   ============================================================ */
+
+function createGroundTexture()
+{
+    const size = 512;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+
+    const ctx = canvas.getContext("2d");
+
+    let seed = 73921;
+    function random()
+    {
+        seed =
+            (seed * 1664525 + 1013904223) >>> 0;
+
+        return seed / 4294967296;
+    }
+
+    ctx.fillStyle = "#203b18";
+    ctx.fillRect(0, 0, size, size);
+
+    function addPatch(x, y, radius, rgb, alpha)
+    {
+        const g = ctx.createRadialGradient(
+            x, y, radius * 0.05,
+            x, y, radius
+        );
+
+        g.addColorStop(
+            0,
+            rgb.replace(")", `, ${alpha})`)
+        );
+
+        g.addColorStop(
+            0.6,
+            rgb.replace(
+                ")",
+                `, ${alpha * 0.55})`
+            )
+        );
+
+        g.addColorStop(
+            1,
+            rgb.replace(")", ", 0)")
+        );
+
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(
+            x,
+            y,
+            radius,
+            0,
+            Math.PI * 2
+        );
+        ctx.fill();
+    }
+
+    for (let i = 0; i < 60; i++)
+    {
+        addPatch(
+            random() * size,
+            random() * size,
+            45 + random() * 100,
+            random() > 0.5
+                ? "rgb(54,82,31)"
+                : "rgb(9,28,7)",
+            0.35 + random() * 0.25
+        );
+    }
+
+    for (let i = 0; i < 190; i++)
+    {
+        addPatch(
+            random() * size,
+            random() * size,
+            8 + random() * 28,
+            random() > 0.5
+                ? "rgb(66,94,39)"
+                : "rgb(16,43,10)",
+            0.12 + random() * 0.18
+        );
+    }
+
+    for (let i = 0; i < 1500; i++)
+    {
+        const x = random() * size;
+        const y = random() * size;
+        const r = 0.4 + random() * 1.0;
+
+        ctx.fillStyle =
+            random() > 0.5
+                ? "rgba(90,110,51,0.22)"
+                : "rgba(4,18,5,0.20)";
+
+        ctx.beginPath();
+        ctx.arc(
+            x,
+            y,
+            r,
+            0,
+            Math.PI * 2
+        );
+        ctx.fill();
+    }
+
+    const texture =
+        new THREE.CanvasTexture(canvas);
+
+    texture.wrapS =
+        THREE.RepeatWrapping;
+
+    texture.wrapT =
+        THREE.RepeatWrapping;
+
+    texture.repeat.set(5, 5);
+
+    texture.colorSpace =
+        THREE.SRGBColorSpace;
+
+    texture.minFilter =
+        THREE.LinearMipmapLinearFilter;
+
+    texture.magFilter =
+        THREE.LinearFilter;
+
+    texture.anisotropy =
+        Math.min(
+            renderer.capabilities.getMaxAnisotropy(),
+            4
+        );
+
+    texture.needsUpdate = true;
+
+    return texture;
+}
+
+
+const groundTexture =
+    createGroundTexture();
+
+
+/* ============================================================
+   PRE-MADE TOON / CELL SHADING
+   Three.js MeshToonMaterial + gradientMap.
+   ============================================================ */
+
+function createToonGradient()
+{
+    const data =
+        new Uint8Array([
+            38, 38, 38, 255,
+            84, 84, 84, 255,
+            160, 160, 160, 255,
+            255, 255, 255, 255
+        ]);
+
+    const texture =
+        new THREE.DataTexture(
+            data,
+            4,
+            1,
+            THREE.RGBAFormat,
+            THREE.UnsignedByteType
+        );
+
+    texture.minFilter =
+        THREE.NearestFilter;
+
+    texture.magFilter =
+        THREE.NearestFilter;
+
+    texture.wrapS =
+        THREE.ClampToEdgeWrapping;
+
+    texture.wrapT =
+        THREE.ClampToEdgeWrapping;
+
+    texture.generateMipmaps =
+        false;
+
+    texture.colorSpace =
+        THREE.NoColorSpace;
+
+    texture.needsUpdate = true;
+
+    return texture;
+}
+
+
+const toonGradient =
+    createToonGradient();
+
+
+const toonMaterialCache =
+    new Map();
+
+
+function createToonMaterial({
+    color = 0xffffff,
+    map = null,
+    normalMap = null,
+    alphaMap = null,
+    transparent = false,
+    alphaTest = 0,
+    side = THREE.FrontSide,
+    opacity = 1.0
+} = {})
+{
+    const colorObject =
+        new THREE.Color(color);
+
+    const key = [
+        colorObject.getHexString(),
+        map ? map.uuid : "none",
+        normalMap ? normalMap.uuid : "none",
+        alphaMap ? alphaMap.uuid : "none",
+        transparent ? "t" : "o",
+        alphaTest,
+        side,
+        opacity
+    ].join(":");
+
+    if (toonMaterialCache.has(key))
+        return toonMaterialCache.get(key);
+
+    const material =
+        new THREE.MeshToonMaterial({
+            color: colorObject,
+            map: map || null,
+            gradientMap: toonGradient,
+            normalMap: normalMap || null,
+            alphaMap: alphaMap || null,
+            transparent,
+            alphaTest,
+            opacity,
+            side
+        });
+
+    toonMaterialCache.set(
+        key,
+        material
+    );
+
+    return material;
+}
+
+
+/* ============================================================
+   SOUTH MUMBAI-INSPIRED BUILDING PALETTE
+   ============================================================ */
+
+let nextBuildingComponentId = 1;
+
+
+function hashNumber(n)
+{
+    let x =
+        Math.sin(
+            n * 12.9898
+        ) *
+        43758.5453;
+
+    return (
+        x -
+        Math.floor(x)
+    );
+}
+
+
+/* ------------------------------------------------------------
+   Union-Find
+   ------------------------------------------------------------ */
+
+function buildBuildingComponents(geometry)
+{
+    const position =
+        geometry.attributes.position;
+
+    if (!position)
+        return null;
+
+    const count =
+        position.count;
+
+    const index =
+        geometry.index;
+
+    const ids =
+        new Float32Array(count);
+
+    /*
+       IMPORTANT:
+       Blender/glTF has split many vertices that occupy the exact
+       same 3D position (usually because their normals are different).
+
+       The old algorithm connected triangles only when they shared
+       the SAME VERTEX INDEX. That caused one physical building to
+       be split into multiple components.
+
+       Here we first weld vertices conceptually by POSITION without
+       changing the actual geometry. Vertices at the exact same
+       position are treated as the same topological vertex for the
+       purpose of building detection.
+    */
+
+    const parent =
+        new Int32Array(count);
+
+    const rank =
+        new Uint8Array(count);
+
+    for (let i = 0; i < count; i++)
+        parent[i] = i;
+
+    function find(a)
+    {
+        let root = a;
+
+        while (parent[root] !== root)
+            root = parent[root];
+
+        while (parent[a] !== a)
+        {
+            const next = parent[a];
+            parent[a] = root;
+            a = next;
+        }
+
+        return root;
+    }
+
+    function union(a, b)
+    {
+        let ra = find(a);
+        let rb = find(b);
+
+        if (ra === rb)
+            return;
+
+        if (rank[ra] < rank[rb])
+            parent[ra] = rb;
+        else if (rank[ra] > rank[rb])
+            parent[rb] = ra;
+        else
+        {
+            parent[rb] = ra;
+            rank[ra]++;
+        }
+    }
+
+    /* ------------------------------------------------------------
+       STEP 1 — Weld coincident exported vertices.
+
+       We use the actual Float32 position values as the key rather
+       than an arbitrary spatial radius. This prevents nearby but
+       separate buildings from accidentally being merged.
+       ------------------------------------------------------------ */
+
+    const positionToVertex =
+        new Map();
+
+    const vertex =
+        new THREE.Vector3();
+
+    for (let i = 0; i < count; i++)
+    {
+        vertex.fromBufferAttribute(position, i);
+
+        const key =
+            vertex.x + "," +
+            vertex.y + "," +
+            vertex.z;
+
+        const previous =
+            positionToVertex.get(key);
+
+        if (previous === undefined)
+            positionToVertex.set(key, i);
+        else
+            union(i, previous);
+    }
+
+    /* ------------------------------------------------------------
+       STEP 2 — Connect triangles through the welded vertices.
+       ------------------------------------------------------------ */
+
+    if (index)
+    {
+        const indexCount =
+            index.count;
+
+        for (let i = 0; i < indexCount; i += 3)
+        {
+            const a = index.getX(i);
+            const b = index.getX(i + 1);
+            const c = index.getX(i + 2);
+
+            union(a, b);
+            union(b, c);
+            union(c, a);
+        }
+    }
+    else
+    {
+        // Non-indexed geometry: each triangle already owns its
+        // vertices, so there is nothing else to connect.
+    }
+
+    /* ------------------------------------------------------------
+       STEP 3 — Convert connected components into compact IDs.
+       ------------------------------------------------------------ */
+
+    const rootToId =
+        new Map();
+
+    for (let i = 0; i < count; i++)
+    {
+        const root =
+            find(i);
+
+        let componentId =
+            rootToId.get(root);
+
+        if (componentId === undefined)
+        {
+            componentId =
+                nextBuildingComponentId++;
+
+            rootToId.set(
+                root,
+                componentId
+            );
+        }
+
+        ids[i] =
+            componentId;
+    }
+
+    geometry.setAttribute(
+        "aBuildingColorId",
+        new THREE.BufferAttribute(
+            ids,
+            1
+        )
+    );
+
+    console.log(
+        "Building segmentation:",
+        rootToId.size,
+        "spatially connected components"
+    );
+
+    return rootToId.size;
+}
+
+
+/* ------------------------------------------------------------
+   Convert component IDs into actual vertex colors.
+
+   MeshToonMaterial supports vertexColors, but it needs a real
+   `color` buffer attribute. Each connected building component
+   receives one palette color, so the color is stable across
+   surfaces and camera movement.
+   ------------------------------------------------------------ */
+
+const buildingPalette = [
+    0xc9b38c, // sandstone / warm beige
+    0xa99f92, // basalt / warm grey
+    0xd7c7a7, // pale concrete
+    0xc88f83, // muted pink sandstone
+    0x9ba8aa, // blue-grey glass/concrete
+    0xb8a06c, // buff stone
+    0x8f867c, // darker stone
+    0xd1b89a  // cream plaster
+];
+
+
+function applyBuildingVertexColors(
+    geometry
+)
+{
+    const idAttribute =
+        geometry.getAttribute(
+            "aBuildingColorId"
+        );
+
+    if (!idAttribute)
+        return;
+
+    const count =
+        idAttribute.count;
+
+    const colors =
+        new Float32Array(
+            count * 3
+        );
+
+    const color =
+        new THREE.Color();
+
+    for (
+        let i = 0;
+        i < count;
+        i++
+    )
+    {
+        const componentId =
+            idAttribute.getX(i);
+
+        const paletteIndex =
+            Math.floor(
+                hashNumber(componentId) *
+                buildingPalette.length
+            ) %
+            buildingPalette.length;
+
+        color.setHex(
+            buildingPalette[
+                paletteIndex
+            ]
+        );
+
+        colors[i * 3 + 0] =
+            color.r;
+
+        colors[i * 3 + 1] =
+            color.g;
+
+        colors[i * 3 + 2] =
+            color.b;
+    }
+
+    geometry.setAttribute(
+        "color",
+        new THREE.BufferAttribute(
+            colors,
+            3
+        )
+    );
+}
+
+/* ------------------------------------------------------------
+   Building toon material
+
+   Vertex color is constant across every connected building
+   component, so the entire building remains a single solid color.
+   ------------------------------------------------------------ */
+
+
+/* ============================================================
+   BUILDING FACADE TEXTURE
+
+   The GLB building meshes do NOT contain UV coordinates, so we
+   generate simple facade UVs from the existing position + normal.
+   Side faces use horizontal position + height; roofs use X/Z.
+
+   The supplied grayscale facade image is used as a COLOR MAP.
+   Its white wall areas preserve the per-building vertex color,
+   while its dark windows/panels create actual visual structure.
+   ============================================================ */
+
+const buildingFacadeTexture =
+  new THREE.TextureLoader().load(
+    "building_facade.png"
+  );
+
+buildingFacadeTexture.wrapS =
+  THREE.RepeatWrapping;
+
+buildingFacadeTexture.wrapT =
+  THREE.RepeatWrapping;
+
+buildingFacadeTexture.repeat.set(
+  1.0,
+  1.0
+);
+
+buildingFacadeTexture.colorSpace =
+  THREE.SRGBColorSpace;
+
+buildingFacadeTexture.minFilter =
+  THREE.LinearMipmapLinearFilter;
+
+buildingFacadeTexture.magFilter =
+  THREE.LinearFilter;
+
+buildingFacadeTexture.anisotropy =
+  Math.min(
+    renderer.capabilities.getMaxAnisotropy(),
+    4
+  );
+
+
+function applyBuildingFacadeUVs(geometry)
+{
+    const position =
+      geometry.getAttribute("position");
+
+    const normal =
+      geometry.getAttribute("normal");
+
+    if (!position || !normal)
+      return;
+
+    const uv =
+      new Float32Array(
+        position.count * 2
+      );
+
+    /*
+     * The city is very large, so a small world/local-coordinate
+     * scale gives us several architectural modules across a
+     * building rather than one giant stretched photograph.
+     */
+    const scale =
+      0.055;
+
+    for (let i = 0; i < position.count; i++)
+    {
+        const x =
+          position.getX(i);
+
+        const y =
+          position.getY(i);
+
+        const z =
+          position.getZ(i);
+
+        const nx =
+          Math.abs(normal.getX(i));
+
+        const ny =
+          Math.abs(normal.getY(i));
+
+        const nz =
+          Math.abs(normal.getZ(i));
+
+        let u;
+        let v;
+
+        if (ny > nx && ny > nz)
+        {
+            // Roofs should keep their clean building color.
+            // The facade texture is grayscale, so point all roof
+            // UVs at a nearly pure-white pixel in the supplied PNG.
+            // White × vertex color = original building color.
+            u = 1070.0 / 2048.0;
+            v = 470.0 / 1147.0;
+        }
+        else if (nx > nz)
+        {
+            // X-facing facade: Z is horizontal.
+            u = z * scale;
+            v = y * scale;
+        }
+        else
+        {
+            // Z-facing facade: X is horizontal.
+            u = x * scale;
+            v = y * scale;
+        }
+
+        uv[i * 2 + 0] =
+          u;
+
+        uv[i * 2 + 1] =
+          v;
+    }
+
+    geometry.setAttribute(
+      "uv",
+      new THREE.BufferAttribute(
+        uv,
+        2
+      )
+    );
+}
+
+function createBuildingToonMaterial(object)
+{
+    const geometry =
+        object.geometry;
+
+    if (
+        !geometry.getAttribute(
+            "aBuildingColorId"
+        )
+    )
+    {
+        buildBuildingComponents(
+            geometry
+        );
+    }
+
+    applyBuildingVertexColors(
+        geometry
+    );
+
+    applyBuildingFacadeUVs(
+        geometry
+    );
+
+    /*
+     * OPAQUE TEXTURED BUILDINGS
+     *
+     * Vertex colors remain the per-building base color.
+     * MeshStandardMaterial supplies real PBR reflections from
+     * the static environment above.
+     *
+     * No custom vertex shader.
+     * No vertex displacement.
+     * No transparency.
+     * No additive blending.
+     * No onBeforeCompile.
+     */
+    const material =
+        new THREE.MeshStandardMaterial({
+
+            color:
+                0xffffff,
+
+            vertexColors:
+                true,
+
+            // The facade image is grayscale, so vertex colors
+            // still control the identity/color of each building.
+            map:
+                buildingFacadeTexture,
+
+            // Keep the surface somewhat rough so the facade detail
+            // remains visible instead of becoming a clean mirror.
+            metalness:
+                0.55,
+
+            roughness:
+                0.52,
+
+            envMapIntensity:
+                0.75,
+
+            side:
+                THREE.DoubleSide
+        });
+
+    material.name =
+        "BUILDINGS_FACADE_TEXTURED";
+
+    return material;
+}
+
+function createBuildingLineToonMaterial()
+{
+    // Building outlines are intentionally neutral so they do not
+    // introduce a second color assignment system.
+    return createToonMaterial({
+        color:
+            0x24445a,
+        side:
+            THREE.DoubleSide
+    });
+}
+
+
+function createTreeToonMaterial(original)
+{
+    return createToonMaterial({
+        color:
+            original && original.color
+                ? original.color
+                : 0xffffff,
+        map:
+            original?.map || null,
+        normalMap:
+            original?.normalMap || null,
+        alphaMap:
+            original?.alphaMap || null,
+        transparent:
+            original?.transparent === true,
+        alphaTest:
+            original?.alphaTest || 0.15,
+        opacity:
+            original?.opacity ?? 1.0,
+        side:
+            original?.side ?? THREE.FrontSide
+    });
+}
+
+
+function createTerrainMaterial()
+{
+    return createToonMaterial({
+        color: 0xffffff,
+        map: groundTexture,
+        side: THREE.DoubleSide
+    });
+}
+
+
+const roadLineMaterial =
+    new THREE.MeshBasicMaterial({
+        color: 0xffd34d,
+        side: THREE.DoubleSide
+    });
+
+
+/* ============================================================
+   SEA MATERIAL
+
+   Lightweight scrolling-normal-map water approach inspired by
+   Nugget8's Three.js-Ocean-Scene, which uses two scrolling
+   normal maps specifically for a flat, inexpensive water surface.
+   Project: https://github.com/Nugget8/Three.js-Ocean-Scene
+   License: MIT
+
+   We generate two tiny normal maps locally so the final page has
+   no external texture dependency.
+   ============================================================ */
+
+function createSeaNormalMap(size, scale, strength, phase)
+{
+    const data = new Uint8Array(size * size * 4);
+
+    function height(x, y)
+    {
+        return (
+            Math.sin(
+                x * scale +
+                Math.sin(y * scale * 0.71 + phase) * 1.7
+            ) * 0.55
+            +
+            Math.sin(
+                y * scale * 1.31 +
+                Math.cos(x * scale * 0.83 - phase) * 1.4
+            ) * 0.30
+            +
+            Math.sin(
+                (x + y) * scale * 0.47 +
+                phase * 0.7
+            ) * 0.15
+        );
+    }
+
+    for (let y = 0; y < size; y++)
+    {
+        for (let x = 0; x < size; x++)
+        {
+            const u = x / size;
+            const v = y / size;
+
+            const du = 1.0 / size;
+            const dv = 1.0 / size;
+
+            const hL = height(u - du, v);
+            const hR = height(u + du, v);
+            const hD = height(u, v - dv);
+            const hU = height(u, v + dv);
+
+            const dx = (hR - hL) * strength;
+            const dy = (hU - hD) * strength;
+
+            const nx = -dx;
+            const ny = 1.0;
+            const nz = -dy;
+
+            const length =
+                Math.sqrt(
+                    nx * nx +
+                    ny * ny +
+                    nz * nz
+                );
+
+            const index =
+                (y * size + x) * 4;
+
+            data[index + 0] =
+                Math.round(
+                    ((nx / length) * 0.5 + 0.5) * 255
+                );
+
+            data[index + 1] =
+                Math.round(
+                    ((ny / length) * 0.5 + 0.5) * 255
+                );
+
+            data[index + 2] =
+                Math.round(
+                    ((nz / length) * 0.5 + 0.5) * 255
+                );
+
+            data[index + 3] = 255;
+        }
+    }
+
+    const texture =
+        new THREE.DataTexture(
+            data,
+            size,
+            size,
+            THREE.RGBAFormat,
+            THREE.UnsignedByteType
+        );
+
+    texture.wrapS =
+        THREE.RepeatWrapping;
+
+    texture.wrapT =
+        THREE.RepeatWrapping;
+
+    texture.minFilter =
+        THREE.LinearMipmapLinearFilter;
+
+    texture.magFilter =
+        THREE.LinearFilter;
+
+    texture.generateMipmaps = true;
+    texture.needsUpdate = true;
+
+    return texture;
+}
+
+
+const seaNormalMap0 =
+    createSeaNormalMap(
+        128,
+        7.0,
+        1.80,
+        0.0
+    );
+
+
+const seaNormalMap1 =
+    createSeaNormalMap(
+        128,
+        11.0,
+        1.20,
+        2.7
+    );
+
+
+const seaVertexShader = `
+
+varying vec3 vWorldPosition;
+varying vec3 vWorldNormal;
+
+void main()
+{
+    vec4 worldPosition =
+        modelMatrix * vec4(position, 1.0);
+
+    vWorldPosition =
+        worldPosition.xyz;
+
+    vWorldNormal =
+        normalize(
+            mat3(modelMatrix) * normal
+        );
+
+    gl_Position =
+        projectionMatrix *
+        viewMatrix *
+        worldPosition;
+}
+
+`;
+
+
+const seaFragmentShader = `
+
+uniform float uTime;
+
+uniform sampler2D normalMap0;
+uniform sampler2D normalMap1;
+
+varying vec3 vWorldPosition;
+varying vec3 vWorldNormal;
+
+void main()
+{
+    // World-space coordinates mean we do not depend on the
+    // sea mesh having useful UVs.
+    vec2 uv =
+        vWorldPosition.xz * 0.0018;
+
+
+    // Two independent scrolling normal maps.
+    vec2 uv0 =
+        uv * 2.4 +
+        vec2(
+            uTime * 0.040,
+            uTime * 0.024
+        );
+
+    vec2 uv1 =
+        uv * 4.2 +
+        vec2(
+            -uTime * 0.028,
+            uTime * 0.040
+        );
+
+
+    vec3 n0 =
+        texture2D(
+            normalMap0,
+            uv0
+        ).xyz * 2.0 - 1.0;
+
+    vec3 n1 =
+        texture2D(
+            normalMap1,
+            uv1
+        ).xyz * 2.0 - 1.0;
+
+
+    // Blend the two inexpensive wave layers.
+    vec3 waveNormal =
+        normalize(
+            vec3(
+                (n0.x * 0.65 + n1.x * 0.35) * 1.9,
+                1.0,
+                (n0.z * 0.65 + n1.z * 0.35) * 1.9
+            )
+        );
+
+
+    // ========================================================
+    // HOLOGRAPHIC WATER PALETTE
+    // ========================================================
+
+    vec3 deepBlue =
+        vec3(
+            0.015,
+            0.095,
+            0.22
+        );
+
+    vec3 waterBlue =
+        vec3(
+            0.02,
+            0.25,
+            0.42
+        );
+
+    vec3 brightCyan =
+        vec3(
+            0.04,
+            0.62,
+            0.68
+        );
+
+
+    // ========================================================
+    // LIGHTING
+    // ========================================================
+
+    vec3 lightDirection =
+        normalize(
+            vec3(
+                0.35,
+                1.0,
+                0.25
+            )
+        );
+
+
+    float diffuse =
+        max(
+            dot(
+                waveNormal,
+                lightDirection
+            ),
+            0.0
+        );
+
+
+    vec3 viewDirection =
+        normalize(
+            cameraPosition -
+            vWorldPosition
+        );
+
+
+    float fresnel =
+        1.0 -
+        max(
+            dot(
+                waveNormal,
+                viewDirection
+            ),
+            0.0
+        );
+
+
+    fresnel =
+        pow(
+            fresnel,
+            2.5
+        );
+
+
+    // Moving wave highlights.
+    float highlight =
+        pow(
+            max(
+                dot(
+                    reflect(
+                        -lightDirection,
+                        waveNormal
+                    ),
+                    viewDirection
+                ),
+                0.0
+            ),
+            18.0
+        );
+
+
+    // Base color stays bright enough to read clearly.
+    vec3 color =
+        mix(
+            deepBlue,
+            waterBlue,
+            0.55 + diffuse * 0.45
+        );
+
+
+    // Cyan holographic edge response.
+    color +=
+        brightCyan *
+        fresnel *
+        0.38;
+
+
+    // Moving specular streaks.
+    color +=
+        brightCyan *
+        highlight *
+        3.0;
+
+    // Visible moving wave bands. These follow the animated
+    // normal-map sampling, so the water visibly changes over time.
+    float waveBand =
+        smoothstep(
+            0.52,
+            0.82,
+            n0.x * 0.5 + 0.5
+        );
+
+    color +=
+        brightCyan *
+        waveBand *
+        0.12;
+
+
+    // Very subtle overall cyan lift so the sea doesn't become
+    // nearly black when viewed from above.
+    color +=
+        vec3(
+            0.0,
+            0.025,
+            0.045
+        );
+
+
+    gl_FragColor =
+        vec4(
+            color,
+            1.0
+        );
+}
+
+
+`;
+
+
+function createSeaMaterial()
+{
+    return new THREE.ShaderMaterial({
+
+        vertexShader:
+            seaVertexShader,
+
+        fragmentShader:
+            seaFragmentShader,
+
+        uniforms: {
+
+            uTime: {
+                value: 0.0
+            },
+
+            normalMap0: {
+                value: seaNormalMap0
+            },
+
+            normalMap1: {
+                value: seaNormalMap1
+            }
+
+        },
+
+        transparent: false,
+
+        // The sea must lose depth conflicts to the solid terrain.
+        depthTest: true,
+        depthWrite: false,
+
+        // Push the sea slightly back in depth-buffer space. This
+        // removes near-coplanar sea/terrain z-fighting without
+        // changing the actual water geometry.
+        polygonOffset: true,
+        polygonOffsetFactor: 2,
+        polygonOffsetUnits: 4,
+
+        side: THREE.DoubleSide
+    });
+}
+
+
+
+/* ============================================================
+   GLB LOADING
+   ============================================================ */
+
+const loader = new GLTFLoader();
+const loadStart = performance.now();
+
+loader.load(
+  "city.glb",
+
+  (gltf) => {
+    console.log("GLB loaded.");
+
+    const city = gltf.scene;
+    scene.add(city);
+
+    let meshCount = 0;
+    let triangleCount = 0;
+    let vertexCount = 0;
+
+    const materials = new Set();
+    const textures = new Set();
+
+    city.traverse((object) => {
+
+      if (!object.isMesh) return;
+
+      meshCount++;
+
+      const geometry = object.geometry;
+
+      if (geometry.index) {
+        triangleCount += geometry.index.count / 3;
+      } else if (geometry.attributes.position) {
+        triangleCount += geometry.attributes.position.count / 3;
+      }
+
+      if (geometry.attributes.position) {
+        vertexCount += geometry.attributes.position.count;
+      }
+
+      const material = object.material;
+
+      if (!material) return;
+
+      if (Array.isArray(material)) {
+        material.forEach(m => materials.add(m));
+      } else {
+        materials.add(material);
+      }
+
+      const materialName = material.name || "";
+
+      console.log(
+        "MESH:",
+        object.name,
+        "MATERIAL:",
+        materialName
+      );
+
+
+      /* ========================================================
+         TOON MATERIAL ASSIGNMENT
+         ======================================================== */
+
+      if (
+        materialName === "MAT_BUILDINGS_HOLO"
+      ) {
+        object.material =
+          createBuildingToonMaterial(
+            object
+          );
+
+        // Buildings are the important shadow casters. Do not make
+        // the already-heavy trees/roads cast shadows.
+        object.castShadow = true;
+      }
+      else if (
+        materialName === "MAT_BUILDINGS_HOLO_LINES"
+      ) {
+        // TEMPORARILY HIDE THE OVERLAY/LINE BUILDING MESH.
+        // We are isolating the building-color segmentation first.
+        object.visible = false;
+      }
+      else if (
+        materialName === "MAT_ROAD_LINES"
+      ) {
+        // User requested solid yellow road lines.
+        object.material =
+          roadLineMaterial;
+      }
+      else if (
+        materialName === "MAT_TERRAIN"
+      ) {
+        object.material =
+          createTerrainMaterial();
+
+        // Terrain is the primary shadow receiver.
+        object.receiveShadow = true;
+      }
+      else if (
+        materialName === "MAT_SEA"
+      ) {
+        // SEA IS LEFT EXACTLY AS IN THE ATTACHED WORKING FILE.
+        object.material =
+          createSeaMaterial();
+
+        // Render water first; terrain/buildings then win wherever
+        // their actual depth is closer to the camera.
+        object.renderOrder = -10;
+      }
+      else if (
+        materialName.startsWith("Leaf_") ||
+        materialName.startsWith("Trunk_") ||
+        materialName.startsWith("Twig_")
+      ) {
+        object.material =
+          createTreeToonMaterial(
+            material
+          );
+      }
+      else if (
+        materialName.includes("ROAD")
+      ) {
+        // Roads stay on their existing material, but can receive
+        // shadows from nearby buildings.
+        object.receiveShadow = true;
+      }
+      else {
+        // Remaining environment meshes use the same pre-made toon
+        // pipeline while preserving their existing color/texture.
+        object.material =
+          createTreeToonMaterial(
+            material
+          );
+      }
+
+      /* Texture statistics */
+      const checkTexture = (tex) => {
+        if (tex) textures.add(tex);
+      };
+
+      checkTexture(material.map);
+      checkTexture(material.normalMap);
+      checkTexture(material.roughnessMap);
+      checkTexture(material.metalnessMap);
+      checkTexture(material.alphaMap);
+    });
+
+    /* ========================================================
+       STATS
+       ======================================================== */
+
+    document.getElementById("meshes").textContent =
+      meshCount;
+
+    document.getElementById("triangles").textContent =
+      Math.round(triangleCount).toLocaleString();
+
+    document.getElementById("vertices").textContent =
+      vertexCount.toLocaleString();
+
+    document.getElementById("materials").textContent =
+      materials.size;
+
+    document.getElementById("textures").textContent =
+      textures.size;
+
+    const loadTime =
+      (performance.now() - loadStart) / 1000;
+
+    document.getElementById("loadTime").textContent =
+      loadTime.toFixed(2) + " s";
+
+    /* ========================================================
+       FRAME MODEL
+       ======================================================== */
+
+    const box = new THREE.Box3().setFromObject(city);
+
+    const center =
+      box.getCenter(new THREE.Vector3());
+
+    const size =
+      box.getSize(new THREE.Vector3());
+
+    const maxDimension =
+      Math.max(size.x, size.y, size.z);
+
+    // Fit the directional shadow camera to the loaded city.
+    // This avoids hard-coded world coordinates if the Blender
+    // terrain/building heights change later.
+    const shadowCenter =
+      center.clone();
+
+    // Shadow quality is determined by how much world space the
+    // shadow map has to cover. The old setup used the full 3D
+    // bounding-box dimension, which made the 1024px map too sparse.
+    // Use the city's horizontal footprint instead.
+    const shadowFootprint =
+      Math.max(
+        size.x,
+        size.z
+      );
+
+    const shadowRadius =
+      Math.max(
+        shadowFootprint * 0.42,
+        100
+      );
+
+    directional.position.set(
+      shadowCenter.x + maxDimension * 0.55,
+      shadowCenter.y + maxDimension * 1.20,
+      shadowCenter.z + maxDimension * 0.40
+    );
+
+    directional.target.position.copy(
+      shadowCenter
+    );
+
+    scene.add(
+      directional.target
+    );
+
+    const shadowCamera =
+      directional.shadow.camera;
+
+    shadowCamera.left =
+      -shadowRadius;
+
+    shadowCamera.right =
+      shadowRadius;
+
+    shadowCamera.top =
+      shadowRadius;
+
+    shadowCamera.bottom =
+      -shadowRadius;
+
+    shadowCamera.near =
+      1;
+
+    shadowCamera.far =
+      Math.max(
+        maxDimension * 3.0,
+        1000
+      );
+
+    shadowCamera.updateProjectionMatrix();
+
+    // Static city + static light = generate the shadow map once.
+    directional.shadow.needsUpdate = true;
+    renderer.shadowMap.needsUpdate = true;
+
+    // Scale atmospheric depth to the actual city size rather than
+    // hard-coding a fog distance.
+    scene.fog.density =
+      0.55 / maxDimension;
+
+    // Restrict GTAO to the actual city bounds.
+    gtaoPass.setSceneClipBox(
+      box
+    );
+
+    controls.target.copy(center);
+
+    camera.position.set(
+      center.x + maxDimension * 0.45,
+      center.y + maxDimension * 0.30,
+      center.z + maxDimension * 0.45
+    );
+
+    controls.update();
+
+    document.getElementById("loading").style.display =
+      "none";
+
+    console.log("NEXUS GLB TEST");
+    console.log("Meshes:", meshCount);
+    console.log("Triangles:", Math.round(triangleCount));
+    console.log("Vertices:", vertexCount);
+    console.log("Materials:", materials.size);
+    console.log("Textures:", textures.size);
+  },
+
+  (xhr) => {
+    if (xhr.total) {
+      const percent =
+        (xhr.loaded / xhr.total) * 100;
+
+      document.getElementById("loading").textContent =
+        "Loading city.glb... " +
+        percent.toFixed(0) +
+        "%";
+    }
+  },
+
+  (error) => {
+    console.error("GLB loading error:", error);
+
+    document.getElementById("loading").textContent =
+      "Failed to load city.glb — check the console.";
+  }
+);
+
+/* ============================================================
+   HOLOGRAM ANIMATION
+   ============================================================ */
+
+const clock = new THREE.Clock();
+
+function updateHolograms() {
+  const time = clock.getElapsedTime();
+
+  scene.traverse((object) => {
+
+    if (
+      object.isMesh &&
+      object.material &&
+      object.material.uniforms &&
+      object.material.uniforms.uTime
+    ) {
+      object.material.uniforms.uTime.value = time;
+    }
+
+  });
+}
+
+/* ============================================================
+   FPS COUNTER
+   ============================================================ */
+
+let frameCount = 0;
+let lastFPSUpdate = performance.now();
+
+function updateFPS() {
+  frameCount++;
+
+  const now = performance.now();
+
+  if (now - lastFPSUpdate >= 500) {
+
+    const fps =
+      frameCount /
+      ((now - lastFPSUpdate) / 1000);
+
+    document.getElementById("fps").textContent =
+      Math.round(fps);
+
+    frameCount = 0;
+    lastFPSUpdate = now;
+  }
+}
+
+/* ============================================================
+   RENDER LOOP
+   ============================================================ */
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  controls.update();
+  updateHolograms();
+  updateFPS();
+
+  composer.render();
+}
+
+animate();
+
+/* ============================================================
+   RESIZE
+   ============================================================ */
+
+window.addEventListener("resize", () => {
+
+  camera.aspect =
+    window.innerWidth /
+    window.innerHeight;
+
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(
+    window.innerWidth,
+    window.innerHeight
+  );
+
+  composer.setSize(
+    window.innerWidth,
+    window.innerHeight
+  );
+
+  gtaoPass.setSize(
+    window.innerWidth,
+    window.innerHeight
+  );
+});
+</script>
+
+</body>
+</html>
