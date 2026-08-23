@@ -32,8 +32,9 @@ export const ZonePanel: React.FC = () => {
     <div className="zone-panel">
       <h3>Zone Information</h3>
       <div className="zone-details">
-        <p><strong>Name:</strong> {selectedZone.name}</p>
+        {selectedZone.name && <p><strong>Name:</strong> {selectedZone.name}</p>}
         <p><strong>ID:</strong> {selectedZone.id}</p>
+        <p><strong>Neighbors:</strong> {selectedZone.neighbors?.length || 0}</p>
         <p>
           <strong>Status:</strong>{' '}
           {isSafeZone ? (

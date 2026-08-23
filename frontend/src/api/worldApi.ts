@@ -1,28 +1,80 @@
 import { Zone, SafeZone, Agent } from '../types/domain';
+import { WorldBounds } from '../city/zones/voronoi';
 
-const USE_MOCK_DATA = false;
-
-// DEVELOPMENT FIXTURES
-// These mock data are purely for testing Phase 3 frontend rendering 
-// until the real backend contract is established.
-const MOCK_ZONES: Zone[] = [
-  { id: 'zone-1', name: 'Downtown Sector', spatial: { type: 'point', coordinates: [700, 0, 700] } },
-  { id: 'zone-2', name: 'Industrial Sector', spatial: { type: 'point', coordinates: [300, 0, 800] } },
-  { id: 'zone-3', name: 'Residential Sector', spatial: { type: 'point', coordinates: [900, 0, 300] } },
-];
-
-const MOCK_SAFE_ZONES: SafeZone[] = [
-  { id: 'sz-1', zoneId: 'zone-3', capacity: 5000 },
-];
+/**
+ * TEMPORARY DEVELOPMENT FIXTURE
+ * Shared import helper so the JSON is loaded only once.
+ */
+async function loadZoneMapping(): Promise<Record<string, unknown>> {
+  const response = await import('../../../backend/data/glb_zone_mapping.json');
+  return (response.default || response) as Record<string, unknown>;
+}
 
 export const fetchZones = async (): Promise<Zone[]> => {
-  if (USE_MOCK_DATA) return Promise.resolve(MOCK_ZONES);
-  return Promise.resolve([]); // Backend world data unavailable
+  // TEMPORARY DEVELOPMENT FIXTURE
+  // Directly importing the backend data JSON because the real backend API endpoint does not exist yet.
+  // This must be replaced with a real fetch (e.g. GET /api/zones) once the backend is ready.
+  // IMPORTANT: Do not use this as production architecture.
+  try {
+    const data = await loadZoneMapping();
+    
+    if (!data.zones || !Array.isArray(data.zones)) {
+      throw new Error("Invalid zone data format.");
+    }
+    
+    if ((data.zones as unknown[]).length !== 21) {
+      console.warn(`Expected 21 zones, got ${(data.zones as unknown[]).length}`);
+    }
+
+    return data.zones as Zone[];
+  } catch (err) {
+    console.error("Failed to load backend zone data:", err);
+    throw err;
+  }
+};
+
+/**
+ * Extract the authoritative world bounds from glb_zone_mapping.json.
+ * Used by the Voronoi visualization — NOT a new backend contract.
+ */
+export const fetchWorldBounds = async (): Promise<WorldBounds> => {
+  try {
+    const data = await loadZoneMapping();
+
+    const wcs = data.world_coordinate_system as
+      | { world_bounds?: { x_min?: number; x_max?: number; z_min?: number; z_max?: number } }
+      | undefined;
+
+    if (!wcs?.world_bounds) {
+      throw new Error('Missing world_coordinate_system.world_bounds in zone mapping JSON');
+    }
+
+    const b = wcs.world_bounds;
+    if (
+      typeof b.x_min !== 'number' ||
+      typeof b.x_max !== 'number' ||
+      typeof b.z_min !== 'number' ||
+      typeof b.z_max !== 'number'
+    ) {
+      throw new Error('Invalid world_bounds values in zone mapping JSON');
+    }
+
+    return {
+      xMin: b.x_min,
+      xMax: b.x_max,
+      zMin: b.z_min,
+      zMax: b.z_max,
+    };
+  } catch (err) {
+    console.error('Failed to load world bounds:', err);
+    throw err;
+  }
 };
 
 export const fetchSafeZones = async (): Promise<SafeZone[]> => {
-  if (USE_MOCK_DATA) return Promise.resolve(MOCK_SAFE_ZONES);
-  return Promise.resolve([]); // Backend world data unavailable
+  // Safe zones remain backend-authoritative.
+  // Since we don't have authoritative safe zone data yet, return empty.
+  return Promise.resolve([]);
 };
 
 export const fetchAgents = async (): Promise<Agent[]> => {

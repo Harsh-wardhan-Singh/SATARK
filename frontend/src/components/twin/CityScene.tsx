@@ -3,8 +3,9 @@ import { CityRenderer } from '../../city/CityRenderer';
 import { ZoneRenderer } from '../../city/zones/ZoneRenderer';
 import { CityStateAdapter } from '../../city/CityStateAdapter';
 import { CityInteraction } from '../../city/CityInteraction';
-import { fetchZones, fetchSafeZones } from '../../api/worldApi';
+import { fetchZones, fetchSafeZones, fetchWorldBounds } from '../../api/worldApi';
 import { useStore } from '../../store';
+import { WorldBounds } from '../../city/zones/voronoi';
 import './CityScene.css';
 
 export const CityScene: React.FC = () => {
@@ -13,6 +14,7 @@ export const CityScene: React.FC = () => {
   const zoneRendererRef = useRef<ZoneRenderer | null>(null);
   const stateAdapterRef = useRef<CityStateAdapter | null>(null);
   const interactionRef = useRef<CityInteraction | null>(null);
+  const worldBoundsRef = useRef<WorldBounds | null>(null);
   
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -21,12 +23,20 @@ export const CityScene: React.FC = () => {
   useEffect(() => {
     const loadWorldData = async () => {
       try {
-        const [zones, safeZones] = await Promise.all([
+        const [zones, safeZones, worldBounds] = await Promise.all([
           fetchZones(),
-          fetchSafeZones()
+          fetchSafeZones(),
+          fetchWorldBounds(),
         ]);
         useStore.getState().setZones(zones);
         useStore.getState().setSafeZones(safeZones);
+        worldBoundsRef.current = worldBounds;
+
+        // If zone renderer already exists (city loaded first), set bounds now
+        if (zoneRendererRef.current) {
+          zoneRendererRef.current.setWorldBounds(worldBounds);
+          zoneRendererRef.current.updateZones(zones, safeZones);
+        }
       } catch (err) {
         console.error("Failed to load world data:", err);
       }
@@ -51,6 +61,17 @@ export const CityScene: React.FC = () => {
       // Initialize zone layer, interaction, and state sync AFTER city loads
       const zoneRenderer = new ZoneRenderer(renderer);
       zoneRendererRef.current = zoneRenderer;
+
+      // Pass terrain footprint for accurate zone boundary clipping
+      const terrainFootprint = renderer.getTerrainFootprint();
+      if (terrainFootprint) {
+        zoneRenderer.setTerrainFootprint(terrainFootprint);
+      }
+
+      // If world bounds already loaded, set them before state adapter syncs
+      if (worldBoundsRef.current) {
+        zoneRenderer.setWorldBounds(worldBoundsRef.current);
+      }
 
       const stateAdapter = new CityStateAdapter(zoneRenderer);
       stateAdapterRef.current = stateAdapter;

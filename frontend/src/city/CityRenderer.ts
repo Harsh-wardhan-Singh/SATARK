@@ -7,6 +7,8 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { extractTerrainFootprint } from './utils/terrainFootprint';
+import type { Point2D } from './zones/voronoi';
 
 // ============================================================
 // HOLOGRAPHIC SHADERS
@@ -231,9 +233,21 @@ export class CityRenderer {
     
     private directionalLight!: THREE.DirectionalLight;
 
+    // ── Terrain footprint (extracted once after GLB loads) ──
+    private terrainFootprint: Point2D[] | null = null;
+
     public onProgress?: (percent: number) => void;
     public onError?: (error: unknown) => void;
     public onLoadComplete?: () => void;
+
+    /**
+     * Returns the terrain boundary polygon in world X/Z coordinates,
+     * extracted from MAT_TERRAIN meshes after city.glb loads.
+     * Returns null before load completes or if no terrain was found.
+     */
+    public getTerrainFootprint(): Point2D[] | null {
+        return this.terrainFootprint;
+    }
 
     public addOverlay(object: THREE.Object3D): void {
         this.scene.add(object);
@@ -362,6 +376,8 @@ export class CityRenderer {
                 const city = gltf.scene;
                 this.scene.add(city);
 
+                const terrainMeshes: THREE.Mesh[] = [];
+
                 city.traverse((object: any) => {
                     if (!object.isMesh) return;
 
@@ -375,6 +391,7 @@ export class CityRenderer {
                     } else if (materialName === "MAT_ROAD_LINES") {
                         object.material = this.roadLineMaterial;
                     } else if (materialName === "MAT_TERRAIN") {
+                        terrainMeshes.push(object);
                         object.material = this.createTerrainMaterial();
                         object.receiveShadow = true;
                     } else if (materialName === "MAT_SEA") {
@@ -388,6 +405,9 @@ export class CityRenderer {
                         object.material = this.createTreeToonMaterial(object.material);
                     }
                 });
+
+                // Extract terrain footprint for zone boundary clipping
+                this.terrainFootprint = extractTerrainFootprint(terrainMeshes);
 
                 const box = new THREE.Box3().setFromObject(city);
                 const center = box.getCenter(new THREE.Vector3());
