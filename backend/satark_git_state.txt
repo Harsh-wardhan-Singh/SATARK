@@ -1,0 +1,15 @@
+﻿==============================
+SATARK GIT STATE
+==============================
+
+--- BRANCHES ---
+  Harsh * Omm   Shikhar   main   remotes/origin/Harsh   remotes/origin/Omm   remotes/origin/Shikhar   remotes/origin/main
+
+--- STATUS ---
+On branch Omm Your branch is up to date with 'origin/Omm'.  Untracked files:   (use "git add <file>..." to include in what will be committed) 	satark_codebase.txt  nothing added to commit but untracked files present (use "git add" to track)
+
+--- RECENT COMMITS ---
+1941200 (HEAD -> Omm, origin/main, origin/Omm, main) Phase 3 : agents and infrastructure implementation done. f687d56 Merge branch 'main' into Omm c066b06 Phase 2: Digital twin implemented. 629c214 Merge pull request #1 from Rohan-118/Shikhar e1f9348 Phase 1 : Core implementation done and verified. a33ccdf cleaned up frontend folder f9c5934 Phase 0 : DJango configuration done and verified. 3ab6d05 Files added: simulation\intervention.py , scenario.py and decision\intervention.py , optimizer.py c31ccda (origin/Shikhar, origin/Harsh, Shikhar, Harsh) chore: initialize SATARK repository
+
+--- TRACKED FILES ---
+agents/__init__.py agents/agent.py agents/apps.py agents/manager.py agents/movement.py agents/normal_behavior.py agents/panic_behavior.py api/__init__.py api/apps.py api/serializers.py api/urls.py api/views.py calamities/__init__.py calamities/apps.py calamities/base.py calamities/earthquake.py calamities/flood.py calamities/tsunami.py cascade/__init__.py cascade/apps.py cascade/cascade_engine.py cascade/graph.py config/__init__.py config/asgi.py config/settings.py config/urls.py config/wsgi.py core/__init__.py core/apps.py core/constants.py core/enums.py core/types.py db.sqlite3 decision/__init__.py decision/apps.py decision/intervention.py decision/optimizer.py decision/priority.py decision/recommendation.py decision/response.py infrastructure/__init__.py infrastructure/apps.py infrastructure/building.py infrastructure/facility.py infrastructure/manager.py infrastructure/road.py manage.py ml/__init__.py ml/apps.py ml/area_analysis.py ml/casualty_model.py ml/damage_model.py ml/impact_model.py ml/predictor.py requirements.txt risk/apps.py risk/risk_engine.py scripts/generate_data.py scripts/seed_demo.py simulation/__init__.py simulation/apps.py simulation/clock.py simulation/engine.py simulation/intervention.py simulation/runner.py simulation/scenario.py simulation/snapshot.py simulation/world.py tests/test_agents.py tests/test_api.py tests/test_calamities.py tests/test_decision.py tests/test_infrastructure.py tests/test_ml.py tests/test_simulation.py tests/test_twin.py twin/__init__.py twin/apps.py twin/entity.py twin/manager.py twin/state.py twin/twin.py
