@@ -24,10 +24,7 @@ export interface SafeZone {
   capacity: number;
 }
 
-export interface Agent {
-  id: string;
-  zoneId: string;
-}
+export * from './agent';
 
 export interface Calamity {
   type: CalamityType;
