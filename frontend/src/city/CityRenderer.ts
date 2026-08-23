@@ -235,6 +235,20 @@ export class CityRenderer {
     public onError?: (error: unknown) => void;
     public onLoadComplete?: () => void;
 
+    public addOverlay(object: THREE.Object3D): void {
+        this.scene.add(object);
+    }
+
+    public removeOverlay(object: THREE.Object3D): void {
+        this.scene.remove(object);
+    }
+
+    public raycast(mouse: THREE.Vector2, objects: THREE.Object3D[]): THREE.Intersection[] {
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, this.camera);
+        return raycaster.intersectObjects(objects, false);
+    }
+
     constructor(container: HTMLElement) {
         this.container = container;
         

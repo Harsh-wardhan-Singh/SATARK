@@ -1,0 +1,24 @@
+.zone-panel {
+  background-color: #1e1e1e;
+  border: 1px solid #333;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  color: #e0e0e0;
+  border-radius: 4px;
+}
+
+.zone-panel h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #333;
+  padding-bottom: 0.5rem;
+}
+
+.zone-details p {
+  margin: 0.5rem 0;
+}
+
+.empty-state p {
+  color: #888;
+  font-style: italic;
+}

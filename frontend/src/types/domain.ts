@@ -1,8 +1,14 @@
 export type CalamityType = 'Flood' | 'Earthquake';
 
+export interface ZoneSpatial {
+  type: 'point' | 'polygon' | 'unknown';
+  coordinates: any; // Can be [x, y, z] for point, or GeoJSON for polygon, etc.
+}
+
 export interface Zone {
   id: string;
   name: string;
+  spatial: ZoneSpatial;
 }
 
 export interface SafeZone {
