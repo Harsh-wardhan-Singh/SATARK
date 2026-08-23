@@ -1,0 +1,1 @@
+"""Earthquake damage logic."""
