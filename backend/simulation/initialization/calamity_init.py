@@ -80,6 +80,9 @@ class CalamityInitializer:
             world.state.environment["flood_water_levels"] = dict(
                 flood_state.get("water_levels", {})
             )
+            world.state.environment["flood_water_levels_cm"] = dict(
+                flood_state.get("water_levels_cm", {})
+            )
             world.state.environment["rainfall_intensity"] = scenario.rainfall_intensity
 
         # Hyetograph Engine

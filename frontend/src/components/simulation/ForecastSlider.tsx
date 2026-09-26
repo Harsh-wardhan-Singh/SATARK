@@ -55,13 +55,21 @@ export const ForecastSlider: React.FC = () => {
   let criticalCount = 0;
 
   if (forecastHorizonHours === 0) {
-    // Current live tick
-    const waterLevels: Record<string, number> =
-      environment?.flood_water_levels || {};
-    const depths = Object.values(waterLevels);
-    if (depths.length > 0) {
-      maxDepthCm = Math.round(Math.max(...depths) * 100);
-      criticalCount = depths.filter((d) => d * 100 > 30).length;
+    // Current live tick: check if backend already provided direct centimeter levels
+    const cmLevels: Record<string, number> =
+      (environment as any)?.flood_water_levels_cm || {};
+    const cmDepths = Object.values(cmLevels);
+    if (cmDepths.length > 0) {
+      maxDepthCm = Math.round(Math.max(...cmDepths));
+      criticalCount = cmDepths.filter((d) => d >= 30).length;
+    } else {
+      const waterLevels: Record<string, number> =
+        environment?.flood_water_levels || {};
+      const depths = Object.values(waterLevels);
+      if (depths.length > 0) {
+        maxDepthCm = Math.round(Math.max(...depths) * 100);
+        criticalCount = depths.filter((d) => d * 100 >= 30).length;
+      }
     }
   } else if (nowcastData && nowcastData.horizons) {
     const proj = nowcastData.horizons.find(
@@ -82,24 +90,50 @@ export const ForecastSlider: React.FC = () => {
         <span className="forecast-title">Nowcast Forecast</span>
         <span className="forecast-subtitle">
           {forecastHorizonHours === 0
-            ? 'Live Simulation'
-            : `Forward Projection +${forecastHorizonHours}h`}
+            ? `Live Simulation (Hour ${currentTick})`
+            : `Projected State at Hour ${currentTick + forecastHorizonHours}`}
         </span>
       </div>
 
       <div className="forecast-steps-bar">
-        {horizons.map((h) => (
-          <button
-            key={h}
-            className={`forecast-step-btn ${
-              forecastHorizonHours === h ? 'active' : ''
-            }`}
-            onClick={() => setForecastHorizonHours(h)}
-            title={h === 0 ? 'Live current tick' : `Projected state at +${h} hours`}
-          >
-            {h === 0 ? 'Live (t+0)' : `t+${h}h`}
-          </button>
-        ))}
+        {horizons.map((h) => {
+          const actualHour = currentTick + h;
+          return (
+            <button
+              key={h}
+              className={`forecast-step-btn ${
+                forecastHorizonHours === h ? 'active' : ''
+              }`}
+              onClick={() => setForecastHorizonHours(h)}
+              title={
+                h === 0
+                  ? `Live simulation at Hour ${actualHour}`
+                  : `Projected state at Hour ${actualHour}`
+              }
+            >
+              {h === 0 ? (
+                <>
+                  <span>Hour {actualHour}</span>
+                  <span
+                    style={{
+                      fontSize: '9px',
+                      fontWeight: 700,
+                      background: 'rgba(16, 185, 129, 0.25)',
+                      color: '#34d399',
+                      padding: '1px 5px',
+                      borderRadius: '3px',
+                      marginLeft: '2px',
+                    }}
+                  >
+                    LIVE
+                  </span>
+                </>
+              ) : (
+                `Hour ${actualHour}`
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <div className="forecast-metrics">

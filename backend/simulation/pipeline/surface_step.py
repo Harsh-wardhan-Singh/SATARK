@@ -44,9 +44,14 @@ class SurfaceFloodStep(SimulationStep):
         context.flood_water_levels = dict(water_levels)
         context.world.state.environment["flood_water_levels"] = dict(water_levels)
         context.world.state.environment["flood_water_levels_cm"] = dict(water_levels_cm)
-        context.world.state.environment["rainfall_intensity"] = (
-            context.scenario.rainfall_intensity
-        )
+        if context.flood is not None:
+            context.world.state.environment["rainfall_intensity"] = (
+                context.flood.rainfall_intensity
+            )
+        else:
+            context.world.state.environment["rainfall_intensity"] = (
+                context.scenario.rainfall_intensity
+            )
 
         for zone_id, water_level in water_levels.items():
             context.world.state.update_metric(

@@ -10,11 +10,17 @@ export interface NormalizedCoordinate {
   y: number;
 }
 
+export interface GeoCoordinate {
+  lat: number;
+  lng: number;
+}
+
 export interface Zone {
   id: string;
   name?: string;
   center_world: WorldCoordinate;
   center_normalized?: NormalizedCoordinate;
+  coordinates?: GeoCoordinate;
   neighbors: string[];
   elevation?: number;
   ward_code?: string;

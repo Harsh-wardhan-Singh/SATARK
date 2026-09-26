@@ -112,7 +112,7 @@ class Scenario:
         return float(
             self.get_parameter(
                 "flood_model_step_seconds",
-                60.0,
+                3600.0,
             )
         )
 

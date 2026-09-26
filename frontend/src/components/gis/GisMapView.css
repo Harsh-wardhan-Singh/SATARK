@@ -36,6 +36,41 @@
   color: #ffffff !important;
 }
 
+/* Layer switcher styling */
+.leaflet-control-layers {
+  background: rgba(15, 23, 42, 0.92) !important;
+  border: 1px solid rgba(56, 189, 248, 0.3) !important;
+  color: #e2e8f0 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6) !important;
+  padding: 8px 12px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+.leaflet-control-layers-toggle {
+  background-color: #0f172a !important;
+  border: 1px solid rgba(56, 189, 248, 0.3) !important;
+  border-radius: 6px !important;
+}
+
+.leaflet-control-layers-expanded {
+  background: rgba(15, 23, 42, 0.95) !important;
+  color: #cbd5e1 !important;
+}
+
+.leaflet-control-layers-base label {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  cursor: pointer !important;
+  margin-bottom: 4px !important;
+}
+
+.leaflet-control-layers-base input[type='radio'] {
+  accent-color: #38bdf8 !important;
+}
+
 /* Tooltip and popup overrides */
 .gis-zone-tooltip {
   background: rgba(15, 23, 42, 0.9) !important;

@@ -7,11 +7,42 @@ import { fetchNowcast, NowcastResponse } from '../../api/simulationApi';
 import { Zone, SafeZone } from '../../types/domain';
 import './GisMapView.css';
 
-// Project normalized zone coordinates into Mumbai metro coastal coordinates
-function zoneToLatLng(normalizedX: number, normalizedY: number): [number, number] {
-  const lat = 19.00 + normalizedY * 0.16;
-  const lng = 72.82 + normalizedX * 0.11;
-  return [lat, lng];
+// Authoritative Real-World Geographic Coordinates for SATARK's 21 Simulation Wards
+// Distributed across the South Mumbai peninsula (Menaka/Navy Nagar up to Ballard Estate) matching the 3D model footprint
+export const MUMBAI_ZONE_GEO: Record<string, [number, number]> = {
+  Z01: [18.9195, 72.8235], // Colaba Causeway Central
+  Z02: [18.9215, 72.8160], // Cuffe Parade South / Badhwar Park
+  Z03: [18.9230, 72.8260], // Strand Cinema / Colaba West
+  Z04: [18.9280, 72.8315], // Regal Circle / SP Chowk
+  Z05: [18.9375, 72.8285], // Churchgate / Oval Maidan
+  Z06: [18.9360, 72.8230], // Marine Drive / Back Bay Shoreline
+  Z07: [18.9410, 72.8330], // Fort North / Flora Fountain
+  Z08: [18.9310, 72.8260], // Mantralaya / Back Bay East
+  Z09: [18.9295, 72.8365], // Gateway of India / Taj Palace
+  Z10: [18.9345, 72.8340], // Kala Ghoda Arts District
+  Z11: [18.9435, 72.8400], // Ballard Estate / Port Trust
+  Z12: [18.9285, 72.8200], // Nariman Point Coastal / NCPA
+  Z13: [18.9245, 72.8335], // Radio Club / East Promenade
+  Z14: [18.9245, 72.8190], // Cuffe Parade North / WTC
+  Z15: [18.9170, 72.8285], // Sassoon Docks / East Harbor
+  Z16: [18.9155, 72.8210], // Colaba Market / Post Office
+  Z17: [18.9090, 72.8185], // Old Navy Nagar East / Holiday Camp
+  Z18: [18.9065, 72.8125], // Navy Nagar West / TIFR Coastal
+  Z19: [18.9020, 72.8150], // Navy Nagar South / INS Kunjali
+  Z20: [18.8960, 72.8130], // Menaka / Southern Peninsula Tip
+  Z21: [18.9135, 72.8140], // Afghan Church / Dandi West
+};
+
+function getZoneLatLng(zone: Zone): [number, number] {
+  if (zone.coordinates?.lat && zone.coordinates?.lng) {
+    return [zone.coordinates.lat, zone.coordinates.lng];
+  }
+  if (MUMBAI_ZONE_GEO[zone.id]) {
+    return MUMBAI_ZONE_GEO[zone.id];
+  }
+  const normX = zone.center_normalized?.x ?? 0.5;
+  const normY = zone.center_normalized?.y ?? 0.5;
+  return [18.896 + normY * 0.048, 72.812 + normX * 0.028];
 }
 
 function getDepthColor(depthCm: number): string {
@@ -26,6 +57,7 @@ export const GisMapView: React.FC = () => {
   const mapInstanceRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
   const circlesMapRef = useRef<Map<string, L.Circle>>(new Map());
+  const hasFittedBoundsRef = useRef<boolean>(false);
 
   const {
     selectedZoneId,
@@ -85,24 +117,58 @@ export const GisMapView: React.FC = () => {
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
-    // Centered on Mumbai coastal metro
+    // Centered on South Mumbai peninsula (Menaka to Ballard Estate)
     const map = L.map(mapContainerRef.current, {
-      center: [19.076, 72.877],
-      zoom: 12,
+      center: [18.922, 72.827],
+      zoom: 14,
       zoomControl: false,
       attributionControl: true,
     });
 
-    // Dark Matter tile layer
-    L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    // Free, zero-API-key basemap options:
+    // 1. ArcGIS Dark Gray Base + Labels (default: matches cyber command-center aesthetic)
+    const esriDarkBase = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      {
+        maxNativeZoom: 16,
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+      }
+    );
+
+    const esriDarkRef = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+      {
+        maxNativeZoom: 16,
+        maxZoom: 19,
+      }
+    );
+
+    const esriDarkGroup = L.layerGroup([esriDarkBase, esriDarkRef]);
+
+    // 2. OpenStreetMap Standard (100% free open street map)
+    const osmLayer = L.tileLayer(
+      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
       {
         maxZoom: 19,
-        subdomains: 'abcd',
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }
-    ).addTo(map);
+    );
+
+    // Add Esri Dark by default
+    esriDarkGroup.addTo(map);
+
+    // Layer switcher control for operator convenience
+    L.control
+      .layers(
+        {
+          'Tactical Dark (Esri)': esriDarkGroup,
+          'OpenStreetMap (Streets)': osmLayer,
+        },
+        undefined,
+        { position: 'topright' }
+      )
+      .addTo(map);
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
@@ -115,6 +181,7 @@ export const GisMapView: React.FC = () => {
       mapInstanceRef.current = null;
       layerGroupRef.current = null;
       circlesMapRef.current.clear();
+      hasFittedBoundsRef.current = false;
     };
   }, []);
 
@@ -147,9 +214,7 @@ export const GisMapView: React.FC = () => {
     }
 
     zones.forEach((zone) => {
-      const normX = zone.center_normalized?.x ?? 0.5;
-      const normY = zone.center_normalized?.y ?? 0.5;
-      const [lat, lng] = zoneToLatLng(normX, normY);
+      const [lat, lng] = getZoneLatLng(zone);
 
       // Determine depth in cm
       let depthCm = 0;
@@ -209,7 +274,7 @@ export const GisMapView: React.FC = () => {
       let circle = circlesMap.get(zone.id);
       if (!circle) {
         circle = L.circle([lat, lng], {
-          radius: 1100,
+          radius: 280,
           color: strokeColor,
           weight,
           dashArray,
@@ -242,6 +307,14 @@ export const GisMapView: React.FC = () => {
         circle.setPopupContent(popupHtml);
       }
     });
+
+    // Auto-fit map viewport to encompass all 21 peninsula zones
+    if (circlesMap.size > 0 && !hasFittedBoundsRef.current && mapInstanceRef.current) {
+      const circleList = Array.from(circlesMap.values());
+      const group = L.featureGroup(circleList);
+      mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [20, 20] });
+      hasFittedBoundsRef.current = true;
+    }
   }, [
     zones,
     safeZones,
@@ -278,7 +351,7 @@ export const GisMapView: React.FC = () => {
           </div>
           <div className="legend-item" style={{ marginTop: '4px', borderTop: '1px solid #334155', paddingTop: '4px' }}>
             <span style={{ color: '#10b981', fontWeight: 'bold' }}>●</span>
-            <span>Safe Zones (Backend Predefined)</span>
+            <span>Safe Zones</span>
           </div>
           <div className="legend-item">
             <span style={{ color: '#f97316', fontWeight: 'bold' }}>◌</span>

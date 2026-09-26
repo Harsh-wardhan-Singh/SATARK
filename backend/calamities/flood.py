@@ -29,7 +29,7 @@ class Flood(Calamity):
         zone_mapping_path: str | Path,
         rainfall_intensity: float = 0.0,
         *,
-        model_step_seconds: float = 1.0,
+        model_step_seconds: float = 3600.0,
         parameters: Dict[str, Any] | None = None,
     ) -> None:
 
