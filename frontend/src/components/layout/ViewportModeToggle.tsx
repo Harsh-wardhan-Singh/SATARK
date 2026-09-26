@@ -12,8 +12,7 @@ export const ViewportModeToggle: React.FC = () => {
         onClick={() => setViewportMode('3d')}
         title="3D Holographic Digital Twin Command Center"
       >
-        <span className="mode-icon">🏙️</span>
-        <span>3D DIGITAL TWIN</span>
+        <span>3D VIEW</span>
       </button>
 
       <button
@@ -21,8 +20,7 @@ export const ViewportModeToggle: React.FC = () => {
         onClick={() => setViewportMode('2d')}
         title="2D OpenStreetMap GIS Heatmap & Contours"
       >
-        <span className="mode-icon">🗺️</span>
-        <span>2D GIS MAP</span>
+        <span>2D VIEW</span>
       </button>
     </div>
   );
