@@ -87,3 +87,21 @@ export const applyIntervention = async (intervention_id: string): Promise<WorldS
   }
   return snapshot;
 };
+
+export interface NowcastHorizonProjection {
+  horizon_hours: number;
+  water_depth_cm: Record<string, number>;
+  delta_depth_cm: Record<string, number>;
+  critical_zones: string[];
+}
+
+export interface NowcastResponse {
+  current_tick: number;
+  horizons: NowcastHorizonProjection[];
+}
+
+export const fetchNowcast = async (horizons?: number[]): Promise<NowcastResponse> => {
+  const query = horizons ? `?horizons=${horizons.join(',')}` : '';
+  const data = await apiClient.get(`/simulation/nowcast/${query}`);
+  return data;
+};

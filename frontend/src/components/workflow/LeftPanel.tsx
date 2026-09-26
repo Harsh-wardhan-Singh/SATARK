@@ -1,7 +1,7 @@
 import React from 'react';
 import { useStore } from '../../store';
 import { ZonePanel } from '../digitalTwin/ZonePanel';
-import { ZoneConfiguration } from './ZoneConfiguration';
+import { ZoneConfiguration } from '../simulation/ZoneConfiguration';
 import './LeftPanel.css';
 
 export const LeftPanel: React.FC = () => {

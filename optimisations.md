@@ -555,16 +555,18 @@ flowchart TD
 
 ---
 
-### Phase 7: Dynamic GIS Dashboard & Modular UI Components
+### Phase 7: Dynamic GIS Dashboard & Modular UI Components (COMPLETED)
 - **Deliverables**:
-  1. Decompose `RightPanel.tsx` into `components/impact/` and `components/recommendations/`.
-  2. Decompose `ZoneConfiguration.tsx` into `components/simulation/`.
-  3. Add Leaflet 2D GIS map view toggle in `frontend/src/components/gis/`:
-     - 2D OpenStreetMap base layer with georeferenced flood contours.
-     - 3D Holographic view remains primary command center.
-  4. Visual forecast slider: $t+0$, $t+1\text{h}$, $t+2\text{h}$, $t+3\text{h}$ depth heatmap.
-  5. Configure Vite chunk splitting in `vite.config.ts`.
-  6. Environment-driven `API_BASE_URL` in `frontend/src/api/client.ts`.
+  1. [x] Decompose `RightPanel.tsx` into `components/impact/` (`RiskAssessmentSection.tsx`, `FinalSummarySection.tsx`) and `components/recommendations/` (`RecommendationsSection.tsx`, `InterventionList.tsx`).
+  2. [x] Decompose `ZoneConfiguration.tsx` into `components/simulation/` (`ScenarioSeveritySelector.tsx`, `SimulationDurationInput.tsx`, `ZoneConfiguration.tsx`).
+  3. [x] Add Leaflet 2D GIS map view toggle in `frontend/src/components/gis/` (`GisMapView.tsx`, `GisMapView.css`):
+     - 2D OpenStreetMap / CartoDB Dark Matter base layer with georeferenced flood contours, pipe surcharge indicators, and safe zones.
+     - 3D Holographic view (`CityScene.tsx`) remains primary command center.
+     - Mode toggle in command header (`ViewportModeToggle.tsx`).
+  4. [x] Visual forecast slider in `components/simulation/ForecastSlider.tsx`:
+     - $t+0$, $t+1\text{h}$, $t+2\text{h}$, $t+3\text{h}$ nowcast depth projections with live critical zone counters and depth heatmap sync.
+  5. [x] Configure Vite chunk splitting in `vite.config.ts` (`vendor-react`, `vendor-three`, `vendor-leaflet`).
+  6. [x] Environment-driven `API_BASE_URL` in `frontend/src/api/client.ts` with Vite env type definitions in `vite-env.d.ts`.
 
 ---
 

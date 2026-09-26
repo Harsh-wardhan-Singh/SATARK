@@ -16,6 +16,7 @@ export interface Zone {
   center_world: WorldCoordinate;
   center_normalized?: NormalizedCoordinate;
   neighbors: string[];
+  elevation?: number;
 }
 
 export interface SafeZone {
@@ -34,6 +35,7 @@ export interface Calamity {
 export interface FloodEnvironment {
   flood_water_levels: Record<string, number>;
   rainfall_intensity: number;
+  drainage?: any;
   risk?: any;
   decision?: any;
   subsystems?: any;
