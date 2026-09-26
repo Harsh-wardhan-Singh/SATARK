@@ -12,6 +12,7 @@ class HyetographType(str, Enum):
     SCS_TYPE_II = "SCS_TYPE_II"
     RADAR_NOWCAST = "RADAR_NOWCAST"
     TRIANGULAR = "TRIANGULAR"
+    MUMBAI_2005_CLOUDBURST = "MUMBAI_2005_CLOUDBURST"
 
 
 class HyetographEngine:
@@ -77,6 +78,8 @@ class HyetographEngine:
             return self._intensity_radar(t)
         elif self.hyetograph_type == HyetographType.TRIANGULAR:
             return self._intensity_triangular(t)
+        elif self.hyetograph_type == HyetographType.MUMBAI_2005_CLOUDBURST:
+            return self._intensity_mumbai_cloudburst(t)
         else:
             return self._intensity_constant(t)
 
@@ -172,6 +175,34 @@ class HyetographEngine:
             frac = (self.duration_seconds - t) / max(1.0, self.duration_seconds - tp)
             return self.base_intensity + (self.peak_intensity - self.base_intensity) * max(0.0, frac)
 
+    def _intensity_mumbai_cloudburst(self, t: float) -> float:
+        """
+        Historical benchmark: Mumbai 26 July 2005 extreme cloudburst storm.
+        Total cumulative rainfall: ~944 mm over 24 hours.
+        Peak intensity: 190.3 mm/h at hour 15.5.
+        """
+        if t > self.duration_seconds:
+            decay = math.exp(-(t - self.duration_seconds) / 7200.0)
+            return max(0.0, 16.0 * decay)
+
+        t_hours = t / 3600.0
+        scale = 944.0 / 965.7  # Calibrate exact 944mm integral
+
+        if t_hours < 11.0:
+            val = 8.0 + 9.0 * math.sin(t_hours * math.pi / 11.0)
+        elif t_hours < 14.0:
+            frac = (t_hours - 11.0) / 3.0
+            val = 15.0 + 65.0 * (frac ** 1.8)
+        elif t_hours < 18.0:
+            gauss = math.exp(-((t_hours - 15.5) ** 2) / (2 * (0.92 ** 2)))
+            peak = self.peak_intensity if self.peak_intensity > 100.0 else 190.3
+            val = 38.0 + (peak - 38.0) * gauss
+        else:
+            frac = (24.0 - t_hours) / 6.0
+            val = 16.0 + 40.0 * max(0.0, frac)
+
+        return float(val * scale)
+
     def get_profile(
         self,
         total_seconds: float | None = None,
@@ -208,3 +239,17 @@ class HyetographEngine:
             "time_to_peak_seconds": self.time_to_peak,
             "radar_points_count": len(self.radar_series),
         }
+
+
+def create_mumbai_2005_hyetograph() -> HyetographEngine:
+    """
+    Factory helper returning the calibrated Mumbai 26 July 2005 storm engine
+    simulating ~944 mm total precipitation over a 24-hour duration.
+    """
+    return HyetographEngine(
+        hyetograph_type=HyetographType.MUMBAI_2005_CLOUDBURST,
+        peak_intensity=190.3,
+        duration_seconds=86400.0,
+        base_intensity=8.0,
+    )
+

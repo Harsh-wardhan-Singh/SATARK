@@ -15,6 +15,7 @@ from api.views import (
     SimulationStepView,
     SimulationTeardownView,
     NowcastView,
+    SimulationPresetsView,
     WorldZonesView,
     WorldSheltersView,
     WorldBoundsView,
@@ -92,6 +93,11 @@ urlpatterns = [
         "simulation/nowcast/",
         NowcastView.as_view(),
         name="simulation-nowcast",
+    ),
+    path(
+        "simulation/presets/",
+        SimulationPresetsView.as_view(),
+        name="simulation-presets",
     ),
     path(
         "world/zones/",

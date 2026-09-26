@@ -57,8 +57,19 @@ export const ZonePanel: React.FC = () => {
     <div className="zone-panel">
       <h3>Zone Information</h3>
       <div className="zone-details">
-        {selectedZone.name && <p><strong>Name:</strong> {selectedZone.name}</p>}
         <p><strong>ID:</strong> {selectedZone.id}</p>
+        {selectedZone.ward_name && (
+          <p>
+            <strong>Ward:</strong> {selectedZone.ward_name}{' '}
+            {selectedZone.ward_code && <span style={{ color: '#38bdf8' }}>({selectedZone.ward_code})</span>}
+          </p>
+        )}
+        {selectedZone.risk_classification && (
+          <p><strong>Classification:</strong> {selectedZone.risk_classification}</p>
+        )}
+        {selectedZone.primary_land_use && (
+          <p><strong>Land Use:</strong> {selectedZone.primary_land_use}</p>
+        )}
         <p><strong>Neighbors:</strong> {selectedZone.neighbors?.length || 0}</p>
         <p>
           <strong>Status:</strong>{' '}

@@ -105,3 +105,22 @@ export const fetchNowcast = async (horizons?: number[]): Promise<NowcastResponse
   const data = await apiClient.get(`/simulation/nowcast/${query}`);
   return data;
 };
+
+export interface DisasterScenarioPreset {
+  id: string;
+  name: string;
+  description: string;
+  duration_days: number;
+  duration_seconds: number;
+  severity: number;
+  severity_label: string;
+  rainfall_intensity: number;
+  hyetograph_type: string;
+  target_zone: string;
+  target_ward: string;
+}
+
+export const fetchSimulationPresets = async (): Promise<DisasterScenarioPreset[]> => {
+  const data = await apiClient.get('/simulation/presets/');
+  return data?.presets || [];
+};

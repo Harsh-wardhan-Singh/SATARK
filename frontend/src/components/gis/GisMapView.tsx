@@ -168,8 +168,9 @@ export const GisMapView: React.FC = () => {
         fillOpacity: isSelected ? 0.65 : 0.45,
       });
 
-      // Tooltip
-      circle.bindTooltip(`${zone.id}: ${depthCm} cm`, {
+      // Tooltip with ward short name
+      const shortWard = zone.ward_name ? ` (${zone.ward_name.split('/')[0].trim()})` : '';
+      circle.bindTooltip(`${zone.id}${shortWard}: ${depthCm} cm`, {
         permanent: true,
         direction: 'center',
         className: 'gis-zone-tooltip',
@@ -184,9 +185,10 @@ export const GisMapView: React.FC = () => {
       const popupHtml = `
         <div class="gis-popup-content">
           <div class="gis-popup-header">
-            <span>ZONE ${zone.id}</span>
+            <span>${zone.id} - ${zone.ward_name || 'Urban Zone'}</span>
             ${isSafe ? '<span style="color:#10b981;font-size:10px;">[SAFE ZONE]</span>' : ''}
           </div>
+          ${zone.ward_code ? `<div style="font-size:10px;color:#38bdf8;margin-bottom:4px;">${zone.ward_code} • ${zone.primary_land_use || ''}</div>` : ''}
           <div class="gis-popup-stat">
             <span>Water Depth:</span>
             <span style="color:${getDepthColor(depthCm)};">${depthCm} cm</span>
@@ -194,6 +196,10 @@ export const GisMapView: React.FC = () => {
           <div class="gis-popup-stat">
             <span>Elevation:</span>
             <span>${(zone.elevation ?? zone.center_normalized?.y ?? 0.5).toFixed(2)}m</span>
+          </div>
+          <div class="gis-popup-stat">
+            <span>Classification:</span>
+            <span style="color:#cbd5e1;">${zone.risk_classification || 'Standard Ward'}</span>
           </div>
           <div class="gis-popup-stat">
             <span>Drainage Status:</span>

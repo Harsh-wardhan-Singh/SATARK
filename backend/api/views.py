@@ -649,6 +649,66 @@ class NowcastView(APIView):
             )
 
 
+DISASTER_PRESETS: list[dict[str, Any]] = [
+    {
+        "id": "standard_monsoon",
+        "name": "Standard Urban Monsoon",
+        "description": "Steady monsoon downpour causing arterial street ponding and minor stormwater overload.",
+        "duration_days": 3,
+        "duration_seconds": 259200,
+        "severity": 2,
+        "severity_label": "Medium",
+        "rainfall_intensity": 50.0,
+        "hyetograph_type": "CHICAGO",
+        "target_zone": "Z02",
+        "target_ward": "Ward F/S (Parel / King's Circle)",
+    },
+    {
+        "id": "severe_flash_flood",
+        "name": "Severe Convective Flash Flood",
+        "description": "High-intensity cloudburst over dense urban basins with severe pipe surcharge and transit disruption.",
+        "duration_days": 2,
+        "duration_seconds": 172800,
+        "severity": 3,
+        "severity_label": "High",
+        "rainfall_intensity": 110.0,
+        "hyetograph_type": "SCS_TYPE_II",
+        "target_zone": "Z09",
+        "target_ward": "Ward G/N (Dharavi / Mahim Basin)",
+    },
+    {
+        "id": "mumbai_2005_cloudburst",
+        "name": "Mumbai 26 July Cloudburst Benchmark",
+        "description": "Historical disaster benchmark: 944 mm precipitation in 24 hours, extreme Mithi River overflow, power grid and telecom collapse.",
+        "duration_days": 1,
+        "duration_seconds": 86400,
+        "severity": 3,
+        "severity_label": "Extreme",
+        "rainfall_intensity": 190.3,
+        "hyetograph_type": "MUMBAI_2005_CLOUDBURST",
+        "target_zone": "Z04",
+        "target_ward": "Ward H/E (BKC / Mithi Basin)",
+    },
+]
+
+
+class SimulationPresetsView(APIView):
+    """
+    Returns authoritative operational disaster scenario presets.
+    Provides standard test benchmarks for hackathon judging and demonstration.
+    """
+
+    def get(self, request, *args, **kwargs):
+        return Response(
+            {
+                "status": "SUCCESS",
+                "count": len(DISASTER_PRESETS),
+                "presets": DISASTER_PRESETS,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 _CACHED_WORLD_ZONES: list[dict[str, Any]] | None = None
 
 

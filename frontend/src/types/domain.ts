@@ -17,6 +17,10 @@ export interface Zone {
   center_normalized?: NormalizedCoordinate;
   neighbors: string[];
   elevation?: number;
+  ward_code?: string;
+  ward_name?: string;
+  risk_classification?: string;
+  primary_land_use?: string;
 }
 
 export interface SafeZone {
