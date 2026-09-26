@@ -1,4 +1,4 @@
-export type CalamityType = 'FLOOD' | 'EARTHQUAKE';
+export type CalamityType = 'FLOOD';
 
 export interface WorldCoordinate {
   x: number;
@@ -10,12 +10,23 @@ export interface NormalizedCoordinate {
   y: number;
 }
 
+export interface GeoCoordinate {
+  lat: number;
+  lng: number;
+}
+
 export interface Zone {
   id: string;
   name?: string;
   center_world: WorldCoordinate;
   center_normalized?: NormalizedCoordinate;
+  coordinates?: GeoCoordinate;
   neighbors: string[];
+  elevation?: number;
+  ward_code?: string;
+  ward_name?: string;
+  risk_classification?: string;
+  primary_land_use?: string;
 }
 
 export interface SafeZone {
@@ -34,9 +45,9 @@ export interface Calamity {
 export interface FloodEnvironment {
   flood_water_levels: Record<string, number>;
   rainfall_intensity: number;
+  drainage?: any;
   risk?: any;
   decision?: any;
-  earthquake_state?: any;
   subsystems?: any;
   intervention?: any;
 }

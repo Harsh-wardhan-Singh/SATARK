@@ -290,9 +290,12 @@ class WorldStateSerializer(
             )
 
             if state is not None:
-                item["state"] = _json_safe(
-                    state
-                )
+                if hasattr(state, "value"):
+                    item["state"] = state.value
+                elif isinstance(state, (str, int, float, bool)):
+                    item["state"] = state
+                else:
+                    item["state"] = _json_safe(state)
 
             zone_id = getattr(
                 entity,
@@ -338,3 +341,13 @@ class WorldStateSerializer(
                 instance.events
             ),
         }
+
+
+class NavigationRequestSerializer(serializers.Serializer):
+    """Validate parameters for flood-safe route calculation."""
+    origin = serializers.CharField(required=False, allow_blank=True)
+    origin_zone = serializers.CharField(required=False, allow_blank=True)
+    destination = serializers.CharField(required=False, allow_blank=True)
+    destination_zone = serializers.CharField(required=False, allow_blank=True)
+    allow_flooded = serializers.BooleanField(required=False, default=False)
+

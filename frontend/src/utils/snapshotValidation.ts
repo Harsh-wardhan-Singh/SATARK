@@ -48,9 +48,9 @@ export function validateWorldSnapshot(raw: unknown): WorldSnapshot | null {
     ? (dto.environment as Record<string, unknown>)
     : undefined;
 
-  // 4. Extract Calamity and Environment for 7B.1
+  // 4. Extract Calamity and Environment
   let activeCalamity: any = undefined;
-  if (dto.activeCalamity === 'FLOOD' || dto.activeCalamity === 'EARTHQUAKE') {
+  if (dto.activeCalamity === 'FLOOD') {
     activeCalamity = {
       type: dto.activeCalamity,
       active: true

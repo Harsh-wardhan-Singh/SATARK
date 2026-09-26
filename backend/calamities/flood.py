@@ -29,7 +29,7 @@ class Flood(Calamity):
         zone_mapping_path: str | Path,
         rainfall_intensity: float = 0.0,
         *,
-        model_step_seconds: float = 1.0,
+        model_step_seconds: float = 3600.0,
         parameters: Dict[str, Any] | None = None,
     ) -> None:
 
@@ -86,6 +86,12 @@ class Flood(Calamity):
                 self.rainfall_intensity
             ),
             "water_levels": {
+                zone_id: 0.0
+                for zone_id in (
+                    self.propagator.state
+                )
+            },
+            "water_levels_cm": {
                 zone_id: 0.0
                 for zone_id in (
                     self.propagator.state
@@ -156,6 +162,7 @@ class Flood(Calamity):
                 for zone_id, water_level
                 in new_state.items()
             }
+            water_levels_cm = self.propagator.get_water_levels_cm()
 
             self._state = {
                 "calamity_type": (
@@ -165,9 +172,21 @@ class Flood(Calamity):
                     self.rainfall_intensity
                 ),
                 "water_levels": water_levels,
+                "water_levels_cm": water_levels_cm,
             }
 
         return self.state
+
+    def apply_drainage_boost(self, boost: float) -> None:
+        """Apply temporary mechanical drainage boost (e.g. mobile pumps)."""
+        if self.propagator is not None:
+            self.propagator.apply_drainage_boost(boost)
+
+    def get_water_levels_cm(self) -> dict[str, float]:
+        """Return zone water depths in real centimeters (cm)."""
+        if self.propagator is not None:
+            return self.propagator.get_water_levels_cm()
+        return {z: 0.0 for z in self._state.get("water_levels", {})}
 
     # ------------------------------------------------------------------
     # Configuration

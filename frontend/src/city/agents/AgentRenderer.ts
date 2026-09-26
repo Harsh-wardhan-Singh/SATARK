@@ -6,6 +6,11 @@ import { CityRenderer } from '../CityRenderer';
 import { ZoneRenderer } from '../zones/ZoneRenderer';
 import { getRandomPointInPolygon } from './agentInitialization';
 
+// Static reusable scratch vectors to eliminate 45,000+ vector allocations/sec in 60 FPS update loop
+const _scratchCurrentPos = new THREE.Vector2();
+const _scratchTargetPos = new THREE.Vector2();
+const _scratchDir = new THREE.Vector2();
+
 export type AgentAnimationName = 'idle' | 'run';
 
 export interface AgentRendererOptions {
@@ -386,10 +391,10 @@ export class AgentRenderer {
       const mode = this.getEffectiveVisualMode(instance.state);
       
       if (instance.targetPosition) {
-         // Move horizontally towards target
-         const currentPos = new THREE.Vector2(instance.root.position.x, instance.root.position.z);
-         const targetPos = new THREE.Vector2(instance.targetPosition.x, instance.targetPosition.z);
-         const dist = currentPos.distanceTo(targetPos);
+         // Move horizontally towards target without GC allocations
+         _scratchCurrentPos.set(instance.root.position.x, instance.root.position.z);
+         _scratchTargetPos.set(instance.targetPosition.x, instance.targetPosition.z);
+         const dist = _scratchCurrentPos.distanceTo(_scratchTargetPos);
          
          if (dist < 0.5) {
             // Reached target
@@ -419,17 +424,15 @@ export class AgentRenderer {
          } else {
             // Move towards target
             const speed = mode === 'PANIC' ? 30.0 : 8.0; // Panic runs much faster
-            const dir = new THREE.Vector2().subVectors(targetPos, currentPos).normalize();
+            _scratchDir.subVectors(_scratchTargetPos, _scratchCurrentPos).normalize();
             
             // Adjust position
-            instance.root.position.x += dir.x * speed * delta;
-            instance.root.position.z += dir.y * speed * delta;
+            instance.root.position.x += _scratchDir.x * speed * delta;
+            instance.root.position.z += _scratchDir.y * speed * delta;
             
             // Smoothly rotate towards target
-            const targetRotation = Math.atan2(dir.x, dir.y);
+            const targetRotation = Math.atan2(_scratchDir.x, _scratchDir.y);
             
-            // Interpolate rotation (simple lerp for now, Math.PI logic is tricky with wrap-around, so direct set or simple lerp)
-            // Just direct set for robustness
             instance.root.rotation.y = targetRotation;
          }
       } else if (mode === 'NORMAL' && this.zoneRenderer) {

@@ -31,7 +31,15 @@
         "Z05",
         "Z06",
         "Z07"
-      ]
+      ],
+      "ward_code": "Ward A",
+      "ward_name": "Colaba / Fort",
+      "risk_classification": "Coastal Embankment",
+      "primary_land_use": "Commercial / Historic",
+      "coordinates": {
+        "lat": 18.9195,
+        "lng": 72.8235
+      }
     },
     {
       "id": "Z02",
@@ -47,7 +55,15 @@
         "Z01",
         "Z03",
         "Z04"
-      ]
+      ],
+      "ward_code": "Ward F/S",
+      "ward_name": "Parel / King's Circle",
+      "risk_classification": "Lowland Chronic Ponding",
+      "primary_land_use": "High-Density Residential",
+      "coordinates": {
+        "lat": 18.9215,
+        "lng": 72.816
+      }
     },
     {
       "id": "Z03",
@@ -65,7 +81,15 @@
         "Z04",
         "Z05",
         "Z08"
-      ]
+      ],
+      "ward_code": "Ward G/S",
+      "ward_name": "Worli / Lower Parel",
+      "risk_classification": "Urban Outfall Basin",
+      "primary_land_use": "Commercial / IT Hub",
+      "coordinates": {
+        "lat": 18.923,
+        "lng": 72.826
+      }
     },
     {
       "id": "Z04",
@@ -83,7 +107,15 @@
         "Z08",
         "Z13",
         "Z21"
-      ]
+      ],
+      "ward_code": "Ward H/E",
+      "ward_name": "BKC / Mithi Basin",
+      "risk_classification": "Riverine Estuary Critical",
+      "primary_land_use": "Financial District / Transit",
+      "coordinates": {
+        "lat": 18.928,
+        "lng": 72.8315
+      }
     },
     {
       "id": "Z05",
@@ -101,7 +133,15 @@
         "Z06",
         "Z08",
         "Z09"
-      ]
+      ],
+      "ward_code": "Ward K/E",
+      "ward_name": "Andheri East / MIDC",
+      "risk_classification": "Industrial Flood Vulnerable",
+      "primary_land_use": "Industrial / Commercial",
+      "coordinates": {
+        "lat": 18.9375,
+        "lng": 72.8285
+      }
     },
     {
       "id": "Z06",
@@ -118,7 +158,15 @@
         "Z05",
         "Z07",
         "Z09"
-      ]
+      ],
+      "ward_code": "Ward K/W",
+      "ward_name": "Andheri West / Lokhandwala",
+      "risk_classification": "Creek Tidal Backflow",
+      "primary_land_use": "Dense Residential",
+      "coordinates": {
+        "lat": 18.936,
+        "lng": 72.823
+      }
     },
     {
       "id": "Z07",
@@ -137,7 +185,15 @@
         "Z10",
         "Z11",
         "Z18"
-      ]
+      ],
+      "ward_code": "Ward P/S",
+      "ward_name": "Goregaon West / Malad Creek",
+      "risk_classification": "Mangrove Estuary Zone",
+      "primary_land_use": "Residential / Buffer",
+      "coordinates": {
+        "lat": 18.941,
+        "lng": 72.833
+      }
     },
     {
       "id": "Z08",
@@ -155,7 +211,15 @@
         "Z05",
         "Z09",
         "Z13"
-      ]
+      ],
+      "ward_code": "Ward H/W",
+      "ward_name": "Bandra West / Khar",
+      "risk_classification": "Coastal Terrace",
+      "primary_land_use": "Residential / Commercial",
+      "coordinates": {
+        "lat": 18.931,
+        "lng": 72.826
+      }
     },
     {
       "id": "Z09",
@@ -175,7 +239,15 @@
         "Z10",
         "Z12",
         "Z13"
-      ]
+      ],
+      "ward_code": "Ward G/N",
+      "ward_name": "Dharavi / Mahim Basin",
+      "risk_classification": "High-Density Lowland Basin",
+      "primary_land_use": "Dense Mixed-Use",
+      "coordinates": {
+        "lat": 18.9295,
+        "lng": 72.8365
+      }
     },
     {
       "id": "Z10",
@@ -192,7 +264,15 @@
         "Z09",
         "Z11",
         "Z12"
-      ]
+      ],
+      "ward_code": "Ward F/N",
+      "ward_name": "Matunga / Sion",
+      "risk_classification": "Chronic Railway Surcharge",
+      "primary_land_use": "Transit Junction / Residential",
+      "coordinates": {
+        "lat": 18.9345,
+        "lng": 72.834
+      }
     },
     {
       "id": "Z11",
@@ -210,7 +290,15 @@
         "Z12",
         "Z14",
         "Z18"
-      ]
+      ],
+      "ward_code": "Ward L",
+      "ward_name": "Kurla / Chunabhatti",
+      "risk_classification": "River Basin Flood Plain",
+      "primary_land_use": "Transit / Residential",
+      "coordinates": {
+        "lat": 18.9435,
+        "lng": 72.84
+      }
     },
     {
       "id": "Z12",
@@ -229,7 +317,15 @@
         "Z13",
         "Z14",
         "Z15"
-      ]
+      ],
+      "ward_code": "Ward M/W",
+      "ward_name": "Chembur / Tilak Nagar",
+      "risk_classification": "Midland Drainage Junction",
+      "primary_land_use": "Residential",
+      "coordinates": {
+        "lat": 18.9285,
+        "lng": 72.82
+      }
     },
     {
       "id": "Z13",
@@ -249,7 +345,15 @@
         "Z15",
         "Z17",
         "Z21"
-      ]
+      ],
+      "ward_code": "Ward M/E",
+      "ward_name": "Govandi / Mankhurd",
+      "risk_classification": "Tidal Lowland Vulnerable",
+      "primary_land_use": "Suburban Settlement",
+      "coordinates": {
+        "lat": 18.9245,
+        "lng": 72.8335
+      }
     },
     {
       "id": "Z14",
@@ -267,7 +371,15 @@
         "Z15",
         "Z16",
         "Z18"
-      ]
+      ],
+      "ward_code": "Ward N",
+      "ward_name": "Ghatkopar West",
+      "risk_classification": "Foothill Runoff Basin",
+      "primary_land_use": "Commercial / Residential",
+      "coordinates": {
+        "lat": 18.9245,
+        "lng": 72.819
+      }
     },
     {
       "id": "Z15",
@@ -285,7 +397,15 @@
         "Z14",
         "Z16",
         "Z17"
-      ]
+      ],
+      "ward_code": "Ward S",
+      "ward_name": "Bhandup / Vikhroli",
+      "risk_classification": "Creek Drainage Corridor",
+      "primary_land_use": "Industrial / Residential",
+      "coordinates": {
+        "lat": 18.917,
+        "lng": 72.8285
+      }
     },
     {
       "id": "Z16",
@@ -303,7 +423,15 @@
         "Z17",
         "Z18",
         "Z19"
-      ]
+      ],
+      "ward_code": "Ward T",
+      "ward_name": "Mulund / Nahur",
+      "risk_classification": "North Terminal Plain",
+      "primary_land_use": "Residential Suburb",
+      "coordinates": {
+        "lat": 18.9155,
+        "lng": 72.821
+      }
     },
     {
       "id": "Z17",
@@ -321,7 +449,15 @@
         "Z16",
         "Z19",
         "Z21"
-      ]
+      ],
+      "ward_code": "Ward P/N",
+      "ward_name": "Malad West / Marve",
+      "risk_classification": "Coastal Marsh Basin",
+      "primary_land_use": "Dense Mixed",
+      "coordinates": {
+        "lat": 18.909,
+        "lng": 72.8185
+      }
     },
     {
       "id": "Z18",
@@ -340,7 +476,15 @@
         "Z16",
         "Z19",
         "Z20"
-      ]
+      ],
+      "ward_code": "Ward R/S",
+      "ward_name": "Kandivali West / Poisar",
+      "risk_classification": "River Basin Inflow",
+      "primary_land_use": "Residential",
+      "coordinates": {
+        "lat": 18.9065,
+        "lng": 72.8125
+      }
     },
     {
       "id": "Z19",
@@ -358,7 +502,15 @@
         "Z18",
         "Z20",
         "Z21"
-      ]
+      ],
+      "ward_code": "Ward R/C",
+      "ward_name": "Borivali / Dahisar Creek",
+      "risk_classification": "Tidal Estuary Overflow",
+      "primary_land_use": "Transit / Residential",
+      "coordinates": {
+        "lat": 18.902,
+        "lng": 72.815
+      }
     },
     {
       "id": "Z20",
@@ -374,7 +526,15 @@
         "Z18",
         "Z19",
         "Z21"
-      ]
+      ],
+      "ward_code": "Ward R/N",
+      "ward_name": "Dahisar West / Checknaka",
+      "risk_classification": "Northern Highland Surcharge",
+      "primary_land_use": "Commercial / Terminal",
+      "coordinates": {
+        "lat": 18.896,
+        "lng": 72.813
+      }
     },
     {
       "id": "Z21",
@@ -392,7 +552,15 @@
         "Z17",
         "Z19",
         "Z20"
-      ]
+      ],
+      "ward_code": "Ward E",
+      "ward_name": "Byculla / Mazgaon Docks",
+      "risk_classification": "Harbor Storm Surge",
+      "primary_land_use": "Port / Logistics",
+      "coordinates": {
+        "lat": 18.9135,
+        "lng": 72.814
+      }
     }
   ]
 }

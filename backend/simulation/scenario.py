@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from core.types import SimulationConfig
 
@@ -29,6 +29,30 @@ class Scenario:
     )
 
     intervention: Mapping[str, Any] | None = None
+
+    def __init__(
+        self,
+        config: SimulationConfig,
+        initial_state: Mapping[str, Any] | None = None,
+        parameters: Mapping[str, Any] | None = None,
+        intervention: Mapping[str, Any] | None = None,
+        *,
+        initial_entities: Iterable[Any] | None = None,
+        initial_environment: Mapping[str, Any] | None = None,
+    ) -> None:
+        object.__setattr__(self, "config", config)
+        state_dict = dict(initial_state) if initial_state is not None else {}
+        if initial_entities is not None:
+            state_dict["entities"] = tuple(initial_entities)
+        if initial_environment is not None:
+            state_dict["environment"] = dict(initial_environment)
+        object.__setattr__(self, "initial_state", state_dict)
+        object.__setattr__(
+            self,
+            "parameters",
+            dict(parameters) if parameters is not None else {},
+        )
+        object.__setattr__(self, "intervention", intervention)
 
     @property
     def duration(self) -> float:
@@ -88,7 +112,7 @@ class Scenario:
         return float(
             self.get_parameter(
                 "flood_model_step_seconds",
-                60.0,
+                3600.0,
             )
         )
 
@@ -141,3 +165,9 @@ class Scenario:
             key,
             default,
         )
+
+    def get_initial_entities(self) -> tuple[Any, ...]:
+        return tuple(self.initial_state.get("entities", ()))
+
+    def get_initial_environment(self) -> Mapping[str, Any]:
+        return self.initial_state.get("environment", {})

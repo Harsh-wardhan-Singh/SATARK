@@ -15,7 +15,7 @@ class CasualtiesEngine:
             if node['type'] == 'medical'
         }
 
-    def update_casualties(self, current_populations, flood_states, bottlenecks, panic_states, infra_states, earthquake_state=None, time_step_seconds=3600.0):
+    def update_casualties(self, current_populations, flood_states, bottlenecks, panic_states, infra_states, time_step_seconds=3600.0):
         """
         Calculates new injuries and fatalities for this simulation tick.
         
@@ -24,7 +24,6 @@ class CasualtiesEngine:
         bottlenecks: dict of {zone_id: congestion_ratio} from crowd.py
         panic_states: dict of {zone_id: panic_level_0_to_1} from panic.py
         infra_states: dict of real-time infrastructure node health
-        earthquake_state: optional dict containing earthquake damage data
         """
         new_injuries_this_tick = 0
         new_fatalities_this_tick = 0
@@ -77,17 +76,8 @@ class CasualtiesEngine:
                 crush_injury_rate = ((over_capacity * panic) * 0.03) * time_step_hours
                 crush_fatality_rate = ((over_capacity * panic) * 0.002) * time_step_hours
 
-            # --- Vector C: Structural Collapse (Earthquake) ---
-            # Earthquakes are instantaneous, no time scaling applied
-            eq_injury_rate = 0.0
-            eq_fatality_rate = 0.0
-            if earthquake_state and zone_id in earthquake_state.get("damage", {}).get("zone_damage", {}):
-                collapse = earthquake_state["damage"]["zone_damage"][zone_id].get("collapse_ratio", 0.0)
-                eq_fatality_rate = collapse * 0.10
-                eq_injury_rate = collapse * 0.30
-
-            raw_injuries = int(healthy_exposed * (env_injury_rate + crush_injury_rate + eq_injury_rate))
-            raw_fatalities = int(healthy_exposed * (env_fatality_rate + crush_fatality_rate + eq_fatality_rate))
+            raw_injuries = int(healthy_exposed * (env_injury_rate + crush_injury_rate))
+            raw_fatalities = int(healthy_exposed * (env_fatality_rate + crush_fatality_rate))
             
             # Cap total new casualties to healthy_exposed
             total_new_casualties = raw_injuries + raw_fatalities

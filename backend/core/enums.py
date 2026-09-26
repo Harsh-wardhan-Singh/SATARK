@@ -14,11 +14,10 @@ class AgentState(str, Enum):
 class CalamityType(str, Enum):
     """
     Supported calamity types.
+    SATARK focuses strictly on Urban Flood Nowcasting.
     """
 
     FLOOD = "FLOOD"
-    # TSUNAMI = "TSUNAMI"
-    EARTHQUAKE = "EARTHQUAKE"
 
 
 class InfrastructureStatus(str, Enum):

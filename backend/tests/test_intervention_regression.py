@@ -118,14 +118,13 @@ class InterventionRegressionTests(APITestCase):
         self.assertEqual(data["interventions"][0]["id"], "deploy_mobile_pumps")
         self.assertEqual(data["interventions"][1]["id"], "reroute_traffic")
 
-        # 2. Initialize Earthquake
-        payload_eq = {
+        # 2. Initialize fresh Flood scenario to verify interventions are cleared
+        payload_new = {
             "duration": 1.0,
             "tick_rate": 10.0,
-            "calamity_type": "EARTHQUAKE",
+            "calamity_type": "FLOOD",
             "parameters": {
-                "magnitude": 8.0,
-                "depth_km": 10.0,
+                "rainfall_intensity": 10.0,
                 "zone_id": "zone-1",
                 "zone_mapping_path": str(self.zones_path),
                 "zones_path": str(self.zones_path),
@@ -137,7 +136,7 @@ class InterventionRegressionTests(APITestCase):
                 "shelter_data": self.shelters_data,
             }
         }
-        response = self.client.post("/api/simulation/initialize/", payload_eq, format="json")
+        response = self.client.post("/api/simulation/initialize/", payload_new, format="json")
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED])
         
         data = response.json()

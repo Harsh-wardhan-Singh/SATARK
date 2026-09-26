@@ -13,6 +13,13 @@ from api.views import (
     SimulationRunView,
     SimulationStateView,
     SimulationStepView,
+    SimulationTeardownView,
+    NowcastView,
+    SimulationPresetsView,
+    WorldZonesView,
+    WorldSheltersView,
+    WorldBoundsView,
+    NavigationRouteView,
 )
 
 
@@ -53,6 +60,11 @@ urlpatterns = [
         name="simulation-reset",
     ),
     path(
+        "simulation/teardown/",
+        SimulationTeardownView.as_view(),
+        name="simulation-teardown",
+    ),
+    path(
         "simulation/risk/",
         RiskView.as_view(),
         name="simulation-risk",
@@ -76,5 +88,35 @@ urlpatterns = [
         "simulation/intervention/apply-selected/",
         SelectedInterventionView.as_view(),
         name="simulation-apply-selected-intervention",
+    ),
+    path(
+        "simulation/nowcast/",
+        NowcastView.as_view(),
+        name="simulation-nowcast",
+    ),
+    path(
+        "simulation/presets/",
+        SimulationPresetsView.as_view(),
+        name="simulation-presets",
+    ),
+    path(
+        "world/zones/",
+        WorldZonesView.as_view(),
+        name="world-zones",
+    ),
+    path(
+        "world/shelters/",
+        WorldSheltersView.as_view(),
+        name="world-shelters",
+    ),
+    path(
+        "world/bounds/",
+        WorldBoundsView.as_view(),
+        name="world-bounds",
+    ),
+    path(
+        "navigation/route/",
+        NavigationRouteView.as_view(),
+        name="navigation-route",
     ),
 ]

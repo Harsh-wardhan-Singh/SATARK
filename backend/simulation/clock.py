@@ -50,6 +50,19 @@ class SimulationClock:
 
         return self.delta_time
 
+    def step(self) -> float:
+        """
+        Alias for advance().
+        """
+        return self.advance()
+
+    @property
+    def elapsed_time(self) -> float:
+        """
+        Alias for simulation_time.
+        """
+        return self.simulation_time
+
     def reset(self) -> None:
         """
         Reset the clock.

@@ -290,6 +290,18 @@ export class CityRenderer {
     }
 
     /**
+     * O(1) set of animated shader materials holding a uTime uniform.
+     * Prevents O(N) full-scene traversal on every 60 FPS animation frame.
+     */
+    private timeUniformMaterials = new Set<THREE.ShaderMaterial>();
+
+    public registerTimeUniformMaterial(material: THREE.Material | THREE.ShaderMaterial): void {
+        if ((material as any)?.uniforms?.uTime) {
+            this.timeUniformMaterials.add(material as THREE.ShaderMaterial);
+        }
+    }
+
+    /**
      * Raycasts from `origin` in `direction` against collision meshes.
      * Returns the nearest intersection within `maxDistance`, or null.
      */
@@ -739,6 +751,10 @@ export class CityRenderer {
                     } else {
                         object.material = this.createTreeToonMaterial(object.material);
                     }
+
+                    if (object.material) {
+                        this.registerTimeUniformMaterial(object.material);
+                    }
                 });
 
                 // Extract terrain footprint for zone boundary clipping and camera framing
@@ -857,11 +873,11 @@ export class CityRenderer {
 
     private updateHolograms() {
         const time = this.clock.getElapsedTime();
-        this.scene.traverse((object: any) => {
-            if (object.isMesh && object.material && object.material.uniforms && object.material.uniforms.uTime) {
-                object.material.uniforms.uTime.value = time;
+        for (const material of this.timeUniformMaterials) {
+            if (material.uniforms?.uTime) {
+                material.uniforms.uTime.value = time;
             }
-        });
+        }
     }
 
     private animate() {
@@ -890,6 +906,7 @@ export class CityRenderer {
     public dispose() {
         this.isDisposed = true;
         this.tickCallbacks.clear();
+        this.timeUniformMaterials.clear();
         if (this.animationFrameId !== null) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
@@ -1174,7 +1191,7 @@ export class CityRenderer {
 
     // @ts-ignore
     private createHologramMaterial() {
-        return new THREE.ShaderMaterial({
+        const mat = new THREE.ShaderMaterial({
             vertexShader: holoVertexShader,
             fragmentShader: holoFragmentShader,
             uniforms: {
@@ -1186,11 +1203,13 @@ export class CityRenderer {
             side: THREE.DoubleSide,
             blending: THREE.AdditiveBlending
         });
+        this.timeUniformMaterials.add(mat);
+        return mat;
     }
 
     // @ts-ignore
     private createRoadFlowMaterial() {
-        return new THREE.ShaderMaterial({
+        const mat = new THREE.ShaderMaterial({
             vertexShader: roadFlowVertexShader,
             fragmentShader: roadFlowFragmentShader,
             uniforms: {
@@ -1202,10 +1221,12 @@ export class CityRenderer {
             side: THREE.DoubleSide,
             blending: THREE.AdditiveBlending
         });
+        this.timeUniformMaterials.add(mat);
+        return mat;
     }
 
     private createSeaMaterial() {
-        return new THREE.ShaderMaterial({
+        const mat = new THREE.ShaderMaterial({
             vertexShader: seaVertexShader,
             fragmentShader: seaFragmentShader,
             uniforms: {
@@ -1221,6 +1242,8 @@ export class CityRenderer {
             polygonOffsetUnits: 4,
             side: THREE.DoubleSide
         });
+        this.timeUniformMaterials.add(mat);
+        return mat;
     }
 
     // UNION-FIND & BUILDINGS

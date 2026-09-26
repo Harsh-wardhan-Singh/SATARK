@@ -19,6 +19,8 @@ DEBUG = True
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
+    "testserver",
+    "*",
 ]
 
 
@@ -47,7 +49,6 @@ INSTALLED_APPS = [
     "calamities.apps.CalamitiesConfig",
     "simulation.apps.SimulationConfig",
     "ml.apps.MLConfig",
-    "cascade.apps.CascadeConfig",
     "risk.apps.RiskConfig",
     "decision.apps.DecisionConfig",
     "api.apps.APIConfig",

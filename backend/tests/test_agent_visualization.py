@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import pytest
 from core.enums import CalamityType
 from core.types import SimulationConfig
@@ -6,10 +7,12 @@ from simulation.scenario import Scenario
 from simulation.engine import SimulationEngine
 from api.serializers import WorldStateSerializer
 
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
 def test_population_agent_initialization():
-    with open('data/population.json', 'r', encoding='utf-8') as f:
+    with open(DATA_DIR / 'population.json', 'r', encoding='utf-8') as f:
         pop_data = json.load(f)
-    with open('data/shelters.json', 'r', encoding='utf-8') as f:
+    with open(DATA_DIR / 'shelters.json', 'r', encoding='utf-8') as f:
         shelter_data = json.load(f)
 
     scenario = Scenario(
@@ -24,10 +27,10 @@ def test_population_agent_initialization():
             "shelter_data": shelter_data,
         },
         parameters={
-            "zone_mapping_path": "data/glb_zone_mapping.json",
-            "infrastructure_path": "data/infrastructure.json",
-            "zones_path": "data/glb_zone_mapping.json",
-            "shelters_path": "data/shelters.json",
+            "zone_mapping_path": str(DATA_DIR / "glb_zone_mapping.json"),
+            "infrastructure_path": str(DATA_DIR / "infrastructure.json"),
+            "zones_path": str(DATA_DIR / "glb_zone_mapping.json"),
+            "shelters_path": str(DATA_DIR / "shelters.json"),
             "representative_agent_count": 250,
             "agent_speed": 1.0,
         },

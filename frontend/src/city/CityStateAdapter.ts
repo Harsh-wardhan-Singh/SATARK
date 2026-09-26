@@ -93,10 +93,9 @@ export class CityStateAdapter {
     this.unsubscribeWorkflow = useStore.subscribe(
       (state: StoreState, prevState: StoreState) => {
         const floodFinished = prevState.workflowState === 'disaster-active' && state.workflowState === 'disaster-finished';
-        const earthquakeClosed = prevState.workflowState === 'earthquake-result' && state.workflowState === 'idle';
         const floodClosed = prevState.workflowState === 'disaster-finished' && state.workflowState === 'idle';
         
-        if (floodFinished || earthquakeClosed || floodClosed) {
+        if (floodFinished || floodClosed) {
            this.agentRenderer?.resetAgentsToNormal();
            useStore.getState().resetAgentsToNormal();
         }
