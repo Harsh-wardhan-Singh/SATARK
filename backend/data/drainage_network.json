@@ -1,0 +1,773 @@
+{
+  "version": "1.0.0",
+  "description": "Synthetic stormwater drainage pipe network topology mapped to 21 SATARK simulation zones.",
+  "manning_roughness_default": 0.013,
+  "nodes": {
+    "inlet_Z01": {
+      "id": "inlet_Z01",
+      "type": "INLET",
+      "zone_id": "Z01",
+      "world_pos": {
+        "x": -177055.80232994084,
+        "z": 157760.73891039676
+      },
+      "elevation_m": 28.06,
+      "invert_elevation_m": 25.56,
+      "inlet_capacity_m3_s": 0.884
+    },
+    "inlet_Z02": {
+      "id": "inlet_Z02",
+      "type": "INLET",
+      "zone_id": "Z02",
+      "world_pos": {
+        "x": -177422.10696040202,
+        "z": 157178.90816349263
+      },
+      "elevation_m": 26.18,
+      "invert_elevation_m": 23.68,
+      "inlet_capacity_m3_s": 0.853
+    },
+    "inlet_Z03": {
+      "id": "inlet_Z03",
+      "type": "INLET",
+      "zone_id": "Z03",
+      "world_pos": {
+        "x": -176915.25292162984,
+        "z": 156825.8485071209
+      },
+      "elevation_m": 25.04,
+      "invert_elevation_m": 22.54,
+      "inlet_capacity_m3_s": 0.834
+    },
+    "inlet_Z04": {
+      "id": "inlet_Z04",
+      "type": "INLET",
+      "zone_id": "Z04",
+      "world_pos": {
+        "x": -177377.55794714624,
+        "z": 156441.48317512072
+      },
+      "elevation_m": 23.8,
+      "invert_elevation_m": 21.3,
+      "inlet_capacity_m3_s": 0.813
+    },
+    "inlet_Z05": {
+      "id": "inlet_Z05",
+      "type": "INLET",
+      "zone_id": "Z05",
+      "world_pos": {
+        "x": -176234.5576376443,
+        "z": 156410.90796105636
+      },
+      "elevation_m": 23.7,
+      "invert_elevation_m": 21.2,
+      "inlet_capacity_m3_s": 0.812
+    },
+    "inlet_Z06": {
+      "id": "inlet_Z06",
+      "type": "INLET",
+      "zone_id": "Z06",
+      "world_pos": {
+        "x": -175758.41178932335,
+        "z": 156304.16125051517
+      },
+      "elevation_m": 23.36,
+      "invert_elevation_m": 20.86,
+      "inlet_capacity_m3_s": 0.806
+    },
+    "inlet_Z07": {
+      "id": "inlet_Z07",
+      "type": "INLET",
+      "zone_id": "Z07",
+      "world_pos": {
+        "x": -175183.3562912657,
+        "z": 155982.4355090938
+      },
+      "elevation_m": 22.32,
+      "invert_elevation_m": 19.82,
+      "inlet_capacity_m3_s": 0.789
+    },
+    "inlet_Z08": {
+      "id": "inlet_Z08",
+      "type": "INLET",
+      "zone_id": "Z08",
+      "world_pos": {
+        "x": -176339.73888185102,
+        "z": 155865.43935445053
+      },
+      "elevation_m": 21.94,
+      "invert_elevation_m": 19.44,
+      "inlet_capacity_m3_s": 0.782
+    },
+    "inlet_Z09": {
+      "id": "inlet_Z09",
+      "type": "INLET",
+      "zone_id": "Z09",
+      "world_pos": {
+        "x": -175869.82578416023,
+        "z": 155854.82603967193
+      },
+      "elevation_m": 21.91,
+      "invert_elevation_m": 19.41,
+      "inlet_capacity_m3_s": 0.782
+    },
+    "inlet_Z10": {
+      "id": "inlet_Z10",
+      "type": "INLET",
+      "zone_id": "Z10",
+      "world_pos": {
+        "x": -175321.89770666385,
+        "z": 155692.91951572563
+      },
+      "elevation_m": 21.39,
+      "invert_elevation_m": 18.89,
+      "inlet_capacity_m3_s": 0.773
+    },
+    "inlet_Z11": {
+      "id": "inlet_Z11",
+      "type": "INLET",
+      "zone_id": "Z11",
+      "world_pos": {
+        "x": -174805.89582343388,
+        "z": 155129.63338284503
+      },
+      "elevation_m": 19.57,
+      "invert_elevation_m": 17.07,
+      "inlet_capacity_m3_s": 0.743
+    },
+    "inlet_Z12": {
+      "id": "inlet_Z12",
+      "type": "INLET",
+      "zone_id": "Z12",
+      "world_pos": {
+        "x": -175293.570079067,
+        "z": 155014.5744284239
+      },
+      "elevation_m": 19.2,
+      "invert_elevation_m": 16.7,
+      "inlet_capacity_m3_s": 0.737
+    },
+    "inlet_Z13": {
+      "id": "inlet_Z13",
+      "type": "INLET",
+      "zone_id": "Z13",
+      "world_pos": {
+        "x": -175906.2484461918,
+        "z": 154826.1683794329
+      },
+      "elevation_m": 18.59,
+      "invert_elevation_m": 16.09,
+      "inlet_capacity_m3_s": 0.727
+    },
+    "inlet_Z14": {
+      "id": "inlet_Z14",
+      "type": "INLET",
+      "zone_id": "Z14",
+      "world_pos": {
+        "x": -174840.9808489391,
+        "z": 154499.1517228623
+      },
+      "elevation_m": 17.54,
+      "invert_elevation_m": 15.04,
+      "inlet_capacity_m3_s": 0.709
+    },
+    "inlet_Z15": {
+      "id": "inlet_Z15",
+      "type": "INLET",
+      "zone_id": "Z15",
+      "world_pos": {
+        "x": -175546.9636171038,
+        "z": 154277.40057241652
+      },
+      "elevation_m": 16.82,
+      "invert_elevation_m": 14.32,
+      "inlet_capacity_m3_s": 0.697
+    },
+    "inlet_Z16": {
+      "id": "inlet_Z16",
+      "type": "INLET",
+      "zone_id": "Z16",
+      "world_pos": {
+        "x": -174718.03823218305,
+        "z": 154026.5576327565
+      },
+      "elevation_m": 16.01,
+      "invert_elevation_m": 13.51,
+      "inlet_capacity_m3_s": 0.684
+    },
+    "inlet_Z17": {
+      "id": "inlet_Z17",
+      "type": "INLET",
+      "zone_id": "Z17",
+      "world_pos": {
+        "x": -175433.21651403152,
+        "z": 153697.32348947792
+      },
+      "elevation_m": 14.95,
+      "invert_elevation_m": 12.45,
+      "inlet_capacity_m3_s": 0.666
+    },
+    "inlet_Z18": {
+      "id": "inlet_Z18",
+      "type": "INLET",
+      "zone_id": "Z18",
+      "world_pos": {
+        "x": -174115.80101742173,
+        "z": 153685.69683237595
+      },
+      "elevation_m": 14.91,
+      "invert_elevation_m": 12.41,
+      "inlet_capacity_m3_s": 0.665
+    },
+    "inlet_Z19": {
+      "id": "inlet_Z19",
+      "type": "INLET",
+      "zone_id": "Z19",
+      "world_pos": {
+        "x": -174572.5282323261,
+        "z": 153597.8637371017
+      },
+      "elevation_m": 14.63,
+      "invert_elevation_m": 12.13,
+      "inlet_capacity_m3_s": 0.66
+    },
+    "inlet_Z20": {
+      "id": "inlet_Z20",
+      "type": "INLET",
+      "zone_id": "Z20",
+      "world_pos": {
+        "x": -174522.4331306375,
+        "z": 152955.7554679959
+      },
+      "elevation_m": 12.56,
+      "invert_elevation_m": 10.06,
+      "inlet_capacity_m3_s": 0.626
+    },
+    "inlet_Z21": {
+      "id": "inlet_Z21",
+      "type": "INLET",
+      "zone_id": "Z21",
+      "world_pos": {
+        "x": -175373.41658491624,
+        "z": 152891.89741868502
+      },
+      "elevation_m": 12.35,
+      "invert_elevation_m": 9.85,
+      "inlet_capacity_m3_s": 0.623
+    },
+    "junction_J01": {
+      "id": "junction_J01",
+      "type": "JUNCTION",
+      "zone_id": "Z03",
+      "world_pos": {
+        "x": -176500.0,
+        "z": 156500.0
+      },
+      "elevation_m": 24.5,
+      "invert_elevation_m": 21.5,
+      "inlet_capacity_m3_s": 0.0
+    },
+    "junction_J02": {
+      "id": "junction_J02",
+      "type": "JUNCTION",
+      "zone_id": "Z07",
+      "world_pos": {
+        "x": -175800.0,
+        "z": 156000.0
+      },
+      "elevation_m": 22.1,
+      "invert_elevation_m": 19.1,
+      "inlet_capacity_m3_s": 0.0
+    },
+    "junction_J03": {
+      "id": "junction_J03",
+      "type": "JUNCTION",
+      "zone_id": "Z09",
+      "world_pos": {
+        "x": -176200.0,
+        "z": 155200.0
+      },
+      "elevation_m": 21.5,
+      "invert_elevation_m": 18.5,
+      "inlet_capacity_m3_s": 0.0
+    },
+    "junction_J04": {
+      "id": "junction_J04",
+      "type": "JUNCTION",
+      "zone_id": "Z12",
+      "world_pos": {
+        "x": -175500.0,
+        "z": 154500.0
+      },
+      "elevation_m": 19.1,
+      "invert_elevation_m": 16.1,
+      "inlet_capacity_m3_s": 0.0
+    },
+    "junction_J05": {
+      "id": "junction_J05",
+      "type": "JUNCTION",
+      "zone_id": "Z15",
+      "world_pos": {
+        "x": -176000.0,
+        "z": 153500.0
+      },
+      "elevation_m": 16.7,
+      "invert_elevation_m": 13.7,
+      "inlet_capacity_m3_s": 0.0
+    },
+    "junction_J06": {
+      "id": "junction_J06",
+      "type": "JUNCTION",
+      "zone_id": "Z18",
+      "world_pos": {
+        "x": -174800.0,
+        "z": 153000.0
+      },
+      "elevation_m": 14.9,
+      "invert_elevation_m": 11.9,
+      "inlet_capacity_m3_s": 0.0
+    },
+    "junction_J07": {
+      "id": "junction_J07",
+      "type": "JUNCTION",
+      "zone_id": "Z19",
+      "world_pos": {
+        "x": -175200.0,
+        "z": 152000.0
+      },
+      "elevation_m": 14.6,
+      "invert_elevation_m": 11.6,
+      "inlet_capacity_m3_s": 0.0
+    },
+    "pump_P01": {
+      "id": "pump_P01",
+      "type": "PUMP_STATION",
+      "zone_id": "Z14",
+      "world_pos": {
+        "x": -175100.0,
+        "z": 153800.0
+      },
+      "elevation_m": 17.3,
+      "invert_elevation_m": 13.8,
+      "pump_capacity_m3_s": 1.5,
+      "inlet_capacity_m3_s": 0.0
+    },
+    "pump_P02": {
+      "id": "pump_P02",
+      "type": "PUMP_STATION",
+      "zone_id": "Z18",
+      "world_pos": {
+        "x": -174600.0,
+        "z": 152800.0
+      },
+      "elevation_m": 14.6,
+      "invert_elevation_m": 11.1,
+      "pump_capacity_m3_s": 2.0,
+      "inlet_capacity_m3_s": 0.0
+    },
+    "pump_P03": {
+      "id": "pump_P03",
+      "type": "PUMP_STATION",
+      "zone_id": "Z20",
+      "world_pos": {
+        "x": -174900.0,
+        "z": 151200.0
+      },
+      "elevation_m": 12.5,
+      "invert_elevation_m": 9.0,
+      "pump_capacity_m3_s": 2.5,
+      "inlet_capacity_m3_s": 0.0
+    },
+    "outfall_NORTH": {
+      "id": "outfall_NORTH",
+      "type": "OUTFALL",
+      "zone_id": "Z06",
+      "world_pos": {
+        "x": -176300.0,
+        "z": 158200.0
+      },
+      "elevation_m": 23.0,
+      "invert_elevation_m": 19.0,
+      "inlet_capacity_m3_s": 0.0
+    },
+    "outfall_RIVER_WEST": {
+      "id": "outfall_RIVER_WEST",
+      "type": "OUTFALL",
+      "zone_id": "Z21",
+      "world_pos": {
+        "x": -176800.0,
+        "z": 151500.0
+      },
+      "elevation_m": 12.2,
+      "invert_elevation_m": 8.2,
+      "inlet_capacity_m3_s": 0.0
+    },
+    "outfall_BAY_SOUTH": {
+      "id": "outfall_BAY_SOUTH",
+      "type": "OUTFALL",
+      "zone_id": "Z20",
+      "world_pos": {
+        "x": -174500.0,
+        "z": 150800.0
+      },
+      "elevation_m": 11.9,
+      "invert_elevation_m": 7.9,
+      "inlet_capacity_m3_s": 0.0
+    }
+  },
+  "pipes": [
+    {
+      "id": "pipe_Z01_J01_01",
+      "from_node": "inlet_Z01",
+      "to_node": "junction_J01",
+      "diameter_m": 0.8,
+      "length_m": 344.5,
+      "slope": 0.01179,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.436
+    },
+    {
+      "id": "pipe_Z02_J01_02",
+      "from_node": "inlet_Z02",
+      "to_node": "junction_J01",
+      "diameter_m": 0.8,
+      "length_m": 286.3,
+      "slope": 0.00761,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.154
+    },
+    {
+      "id": "pipe_Z03_J01_03",
+      "from_node": "inlet_Z03",
+      "to_node": "junction_J01",
+      "diameter_m": 0.9,
+      "length_m": 132.0,
+      "slope": 0.00788,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.607
+    },
+    {
+      "id": "pipe_Z05_J01_04",
+      "from_node": "inlet_Z05",
+      "to_node": "junction_J01",
+      "diameter_m": 0.8,
+      "length_m": 80.0,
+      "slope": 0.001,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 0.418
+    },
+    {
+      "id": "pipe_Z06_NORTH_05",
+      "from_node": "inlet_Z06",
+      "to_node": "outfall_NORTH",
+      "diameter_m": 1.0,
+      "length_m": 492.9,
+      "slope": 0.00377,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.472
+    },
+    {
+      "id": "pipe_Z04_J03_06",
+      "from_node": "inlet_Z04",
+      "to_node": "junction_J03",
+      "diameter_m": 0.8,
+      "length_m": 427.8,
+      "slope": 0.00655,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.07
+    },
+    {
+      "id": "pipe_Z07_J02_07",
+      "from_node": "inlet_Z07",
+      "to_node": "junction_J02",
+      "diameter_m": 0.9,
+      "length_m": 154.2,
+      "slope": 0.00467,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.237
+    },
+    {
+      "id": "pipe_Z08_J03_08",
+      "from_node": "inlet_Z08",
+      "to_node": "junction_J03",
+      "diameter_m": 0.8,
+      "length_m": 170.0,
+      "slope": 0.00553,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 0.983
+    },
+    {
+      "id": "pipe_Z09_J03_09",
+      "from_node": "inlet_Z09",
+      "to_node": "junction_J03",
+      "diameter_m": 0.9,
+      "length_m": 183.3,
+      "slope": 0.00496,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.275
+    },
+    {
+      "id": "pipe_Z10_J02_10",
+      "from_node": "inlet_Z10",
+      "to_node": "junction_J02",
+      "diameter_m": 0.8,
+      "length_m": 142.1,
+      "slope": 0.001,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 0.418
+    },
+    {
+      "id": "pipe_J01_J03_11",
+      "from_node": "junction_J01",
+      "to_node": "junction_J03",
+      "diameter_m": 1.2,
+      "length_m": 333.5,
+      "slope": 0.009,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 3.699
+    },
+    {
+      "id": "pipe_J02_J04_12",
+      "from_node": "junction_J02",
+      "to_node": "junction_J04",
+      "diameter_m": 1.2,
+      "length_m": 382.4,
+      "slope": 0.00785,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 3.454
+    },
+    {
+      "id": "pipe_J03_J04_13",
+      "from_node": "junction_J03",
+      "to_node": "junction_J04",
+      "diameter_m": 1.2,
+      "length_m": 247.5,
+      "slope": 0.0097,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 3.84
+    },
+    {
+      "id": "pipe_Z11_P01_14",
+      "from_node": "inlet_Z11",
+      "to_node": "pump_P01",
+      "diameter_m": 0.9,
+      "length_m": 340.4,
+      "slope": 0.00961,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.775
+    },
+    {
+      "id": "pipe_Z12_J04_15",
+      "from_node": "inlet_Z12",
+      "to_node": "junction_J04",
+      "diameter_m": 0.9,
+      "length_m": 138.6,
+      "slope": 0.00433,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.191
+    },
+    {
+      "id": "pipe_Z13_J05_16",
+      "from_node": "inlet_Z13",
+      "to_node": "junction_J05",
+      "diameter_m": 0.9,
+      "length_m": 332.4,
+      "slope": 0.00719,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.535
+    },
+    {
+      "id": "pipe_Z14_P01_17",
+      "from_node": "inlet_Z14",
+      "to_node": "pump_P01",
+      "diameter_m": 1.0,
+      "length_m": 186.4,
+      "slope": 0.00665,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.955
+    },
+    {
+      "id": "pipe_Z15_J05_18",
+      "from_node": "inlet_Z15",
+      "to_node": "junction_J05",
+      "diameter_m": 0.9,
+      "length_m": 224.9,
+      "slope": 0.00276,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 0.951
+    },
+    {
+      "id": "pipe_J04_J05_19",
+      "from_node": "junction_J04",
+      "to_node": "junction_J05",
+      "diameter_m": 1.4,
+      "length_m": 279.5,
+      "slope": 0.00859,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 5.451
+    },
+    {
+      "id": "pipe_J04_P01_20",
+      "from_node": "junction_J04",
+      "to_node": "pump_P01",
+      "diameter_m": 1.2,
+      "length_m": 201.6,
+      "slope": 0.01141,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 4.165
+    },
+    {
+      "id": "pipe_P01_J06_21",
+      "from_node": "pump_P01",
+      "to_node": "junction_J06",
+      "diameter_m": 1.4,
+      "length_m": 213.6,
+      "slope": 0.0089,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 5.548
+    },
+    {
+      "id": "pipe_Z16_J06_22",
+      "from_node": "inlet_Z16",
+      "to_node": "junction_J06",
+      "diameter_m": 0.9,
+      "length_m": 257.5,
+      "slope": 0.00625,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.431
+    },
+    {
+      "id": "pipe_Z17_J07_23",
+      "from_node": "inlet_Z17",
+      "to_node": "junction_J07",
+      "diameter_m": 0.9,
+      "length_m": 428.3,
+      "slope": 0.00198,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 0.806
+    },
+    {
+      "id": "pipe_Z18_P02_24",
+      "from_node": "inlet_Z18",
+      "to_node": "pump_P02",
+      "diameter_m": 1.0,
+      "length_m": 252.4,
+      "slope": 0.00519,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.727
+    },
+    {
+      "id": "pipe_Z19_J07_25",
+      "from_node": "inlet_Z19",
+      "to_node": "junction_J07",
+      "diameter_m": 1.0,
+      "length_m": 429.2,
+      "slope": 0.00123,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 0.841
+    },
+    {
+      "id": "pipe_J05_J07_26",
+      "from_node": "junction_J05",
+      "to_node": "junction_J07",
+      "diameter_m": 1.4,
+      "length_m": 425.0,
+      "slope": 0.00494,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 4.133
+    },
+    {
+      "id": "pipe_J06_P02_27",
+      "from_node": "junction_J06",
+      "to_node": "pump_P02",
+      "diameter_m": 1.4,
+      "length_m": 80.0,
+      "slope": 0.01,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 5.881
+    },
+    {
+      "id": "pipe_P02_J07_28",
+      "from_node": "pump_P02",
+      "to_node": "junction_J07",
+      "diameter_m": 1.5,
+      "length_m": 250.0,
+      "slope": 0.001,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 2.235
+    },
+    {
+      "id": "pipe_Z20_P03_29",
+      "from_node": "inlet_Z20",
+      "to_node": "pump_P03",
+      "diameter_m": 1.2,
+      "length_m": 449.0,
+      "slope": 0.00236,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 1.894
+    },
+    {
+      "id": "pipe_Z21_WEST_30",
+      "from_node": "inlet_Z21",
+      "to_node": "outfall_RIVER_WEST",
+      "diameter_m": 1.2,
+      "length_m": 498.3,
+      "slope": 0.00331,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 2.243
+    },
+    {
+      "id": "pipe_J07_P03_31",
+      "from_node": "junction_J07",
+      "to_node": "pump_P03",
+      "diameter_m": 1.6,
+      "length_m": 213.6,
+      "slope": 0.01217,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 9.263
+    },
+    {
+      "id": "pipe_J07_WEST_32",
+      "from_node": "junction_J07",
+      "to_node": "outfall_RIVER_WEST",
+      "diameter_m": 1.6,
+      "length_m": 419.1,
+      "slope": 0.00811,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 7.561
+    },
+    {
+      "id": "pipe_P03_SOUTH_33",
+      "from_node": "pump_P03",
+      "to_node": "outfall_BAY_SOUTH",
+      "diameter_m": 1.8,
+      "length_m": 141.4,
+      "slope": 0.00778,
+      "roughness": 0.013,
+      "full_capacity_m3_s": 10.139
+    }
+  ],
+  "zone_inlet_mapping": {
+    "Z01": "inlet_Z01",
+    "Z02": "inlet_Z02",
+    "Z03": "inlet_Z03",
+    "Z04": "inlet_Z04",
+    "Z05": "inlet_Z05",
+    "Z06": "inlet_Z06",
+    "Z07": "inlet_Z07",
+    "Z08": "inlet_Z08",
+    "Z09": "inlet_Z09",
+    "Z10": "inlet_Z10",
+    "Z11": "inlet_Z11",
+    "Z12": "inlet_Z12",
+    "Z13": "inlet_Z13",
+    "Z14": "inlet_Z14",
+    "Z15": "inlet_Z15",
+    "Z16": "inlet_Z16",
+    "Z17": "inlet_Z17",
+    "Z18": "inlet_Z18",
+    "Z19": "inlet_Z19",
+    "Z20": "inlet_Z20",
+    "Z21": "inlet_Z21"
+  }
+}

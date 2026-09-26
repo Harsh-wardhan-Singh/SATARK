@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store';
-import { applyIntervention, resetSimulation } from '../../api/simulationApi';
+import { applyIntervention } from '../../api/simulationApi';
 import './RightPanel.css';
 
 export const RightPanel: React.FC = () => {
@@ -8,27 +8,12 @@ export const RightPanel: React.FC = () => {
   const [selectedInterventionIds, setSelectedInterventionIds] = useState<string[]>([]);
   const [applying, setApplying] = useState(false);
 
-  // Right Panel is only visible if a disaster is active, finished, or earthquake-result
-  if (workflowState !== 'disaster-active' && workflowState !== 'disaster-finished' && workflowState !== 'earthquake-result') {
+  // Right Panel is only visible if a disaster is active or finished
+  if (workflowState !== 'disaster-active' && workflowState !== 'disaster-finished') {
     return null;
   }
 
-  const handleCloseDisaster = async () => {
-    // If we're closing an earthquake, reset the simulation now
-    if (workflowState === 'earthquake-result') {
-      try {
-        const resetSnapshot = await resetSimulation();
-        resetSnapshot.agents = {
-           agents: Object.values(useStore.getState().agents),
-           timestamp: Date.now(),
-           tick: 0
-        };
-        applyWorldSnapshot(resetSnapshot);
-      } catch (err) {
-        console.error('Failed to reset earthquake simulation:', err);
-      }
-    }
-
+  const handleCloseDisaster = () => {
     // Reset to idle state
     setWorkflowState('idle');
     setSelectedZoneId(null);
@@ -40,7 +25,7 @@ export const RightPanel: React.FC = () => {
   return (
     <div className="right-panel">
       <div className="panel-content">
-        {(workflowState === 'disaster-active' || workflowState === 'earthquake-result') && (
+        {workflowState === 'disaster-active' && (
           <>
             <div className="risk-section" style={{ marginBottom: '20px' }}>
               <h3>RISK ASSESSMENT</h3>
@@ -66,18 +51,14 @@ export const RightPanel: React.FC = () => {
                         : 'Unavailable'}
                     </span>
                   </div>
-                  {workflowState !== 'earthquake-result' && (
-                    <>
-                      <div className="stat-row">
-                        <span className="stat-label">Flooding Risk</span>
-                        <span className="stat-value">{environment.risk.assessment.breakdown?.flooding !== undefined ? `${environment.risk.assessment.breakdown.flooding}%` : 'N/A'}</span>
-                      </div>
-                      <div className="stat-row">
-                        <span className="stat-label">Congestion Risk</span>
-                        <span className="stat-value">{environment.risk.assessment.breakdown?.congestion !== undefined ? `${environment.risk.assessment.breakdown.congestion}%` : 'N/A'}</span>
-                      </div>
-                    </>
-                  )}
+                  <div className="stat-row">
+                    <span className="stat-label">Flooding Risk</span>
+                    <span className="stat-value">{environment.risk.assessment.breakdown?.flooding !== undefined ? `${environment.risk.assessment.breakdown.flooding}%` : 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Congestion Risk</span>
+                    <span className="stat-value">{environment.risk.assessment.breakdown?.congestion !== undefined ? `${environment.risk.assessment.breakdown.congestion}%` : 'N/A'}</span>
+                  </div>
                 </>
               ) : (
                 <div className="intervention-list">
@@ -149,12 +130,6 @@ export const RightPanel: React.FC = () => {
                   {applying ? 'APPLYING...' : 'APPLY INTERVENTION'}
               </button>
             </div>
-            
-            {workflowState === 'earthquake-result' && (
-                <button className="close-disaster-btn" onClick={handleCloseDisaster} style={{ marginTop: '20px' }}>
-                    CLOSE DISASTER
-                </button>
-            )}
           </>
         )}
 

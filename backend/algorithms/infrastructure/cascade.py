@@ -67,6 +67,7 @@ class ExplainableNetwork:
         for node_id, state in new_states.items():
             self.nodes[node_id]['capacity'] = state['capacity']
             self.nodes[node_id]['status_reason'] = state['status_reason']
+        return self.nodes
 
     def export_for_ui(self):
         """Generates the exact JSON string Blender/Frontend needs to display."""

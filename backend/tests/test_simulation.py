@@ -2,6 +2,7 @@ def test_simulation_placeholder():
     assert True
 
 import pytest
+from pathlib import Path
 
 from core.enums import CalamityType
 from core.types import Position, SimulationConfig
@@ -11,6 +12,8 @@ from simulation.clock import SimulationClock
 from simulation.engine import SimulationEngine
 from simulation.scenario import Scenario
 from simulation.world import SimulationWorld
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
 def create_test_scenario(
@@ -42,6 +45,12 @@ def create_test_scenario(
         initial_entities=(entity,),
         initial_environment={
             "test_value": 1.0,
+        },
+        parameters={
+            "zone_mapping_path": str(DATA_DIR / "glb_zone_mapping.json"),
+            "infrastructure_path": str(DATA_DIR / "infrastructure.json"),
+            "shelters_path": str(DATA_DIR / "shelters.json"),
+            "population_path": str(DATA_DIR / "population.json"),
         },
     )
 

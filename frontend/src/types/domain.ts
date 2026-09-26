@@ -1,4 +1,4 @@
-export type CalamityType = 'FLOOD' | 'EARTHQUAKE';
+export type CalamityType = 'FLOOD';
 
 export interface WorldCoordinate {
   x: number;
@@ -36,7 +36,6 @@ export interface FloodEnvironment {
   rainfall_intensity: number;
   risk?: any;
   decision?: any;
-  earthquake_state?: any;
   subsystems?: any;
   intervention?: any;
 }

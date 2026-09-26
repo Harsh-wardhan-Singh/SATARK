@@ -1,4 +1,4 @@
-class RecommendationEngine:
+class InterventionRuleEngine:
     def __init__(self):
         # Define available government interventions and their mechanical effects
         self.available_interventions = {
@@ -67,7 +67,7 @@ class RecommendationEngine:
                 **self.available_interventions["mandatory_evacuation_order"]
             })
 
-        # Earthquake Expansion Rules (Triggered if there's infrastructure or casualty risk, but not necessarily flooding)
+        # Infrastructure & Cascade Rules (Triggered if there's infrastructure or casualty risk)
         # Using existing interventions
         if breakdown.get("infrastructure", 0) > 20 and breakdown.get("flooding", 0) == 0:
             recommendations.append({
@@ -90,8 +90,8 @@ class RecommendationEngine:
                 **self.available_interventions["mandatory_evacuation_order"]
             })
 
-        # Fallback for Earthquake scenario where base rules don't trigger
-        # Ensures there is always at least one recommendation for valid disasters
+        # General Fallback
+        # Ensures there is always at least one recommendation for valid risk situations
         if not recommendations and (breakdown.get("casualties", 0) > 0 or breakdown.get("infrastructure", 0) > 0):
             recommendations.append({
                 "id": "deploy_backup_generators",
@@ -137,3 +137,7 @@ class RecommendationEngine:
                 )
 
         return simulation_environment_state
+
+
+# Backwards compatibility alias
+RecommendationEngine = InterventionRuleEngine

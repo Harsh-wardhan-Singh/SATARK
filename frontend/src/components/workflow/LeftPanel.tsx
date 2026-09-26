@@ -8,8 +8,6 @@ export const LeftPanel: React.FC = () => {
   const { workflowState, selectedZoneId, environment, finalEnvironment } = useStore();
   const displayEnv = workflowState === 'disaster-finished' ? finalEnvironment : environment;
 
-  const eqState = environment?.earthquake_state;
-  const casualties = environment?.subsystems?.casualties;
   const activeCalamity = useStore(state => state.activeCalamity);
   const duration = useStore(state => state.duration);
   const currentTick = useStore(state => state.currentTick);
@@ -73,56 +71,6 @@ export const LeftPanel: React.FC = () => {
               )}
             </div>
             <p className="backend-pending">Waiting for authoritative backend simulation data...</p>
-          </div>
-        )}
-
-        {workflowState === 'earthquake-result' && eqState && (
-          <div className="disaster-monitoring">
-            <h3>EARTHQUAKE</h3>
-            <div className="monitoring-stats" style={{ marginBottom: '20px' }}>
-              <div className="stat-row">
-                <span className="stat-label">Magnitude</span>
-                <span className="stat-value">{eqState.magnitude}</span>
-              </div>
-              <div className="stat-row">
-                <span className="stat-label">Depth</span>
-                <span className="stat-value">{eqState.depth_km} km</span>
-              </div>
-              <div className="stat-row">
-                <span className="stat-label">Epicenter</span>
-                <span className="stat-value">
-                  {eqState.epicenter?.latitude?.toFixed(4) || '0'}, {eqState.epicenter?.longitude?.toFixed(4) || '0'}
-                </span>
-              </div>
-            </div>
-
-            <h3>EARTHQUAKE IMPACT</h3>
-            <div className="monitoring-stats">
-              <div className="stat-row">
-                <span className="stat-label">PGA</span>
-                <span className="stat-value">
-                  {eqState.pga && Object.keys(eqState.pga).length > 0
-                    ? Math.max(...Object.values(eqState.pga as Record<string, number>)).toFixed(2) + ' g'
-                    : 'N/A'}
-                </span>
-              </div>
-              <div className="stat-row" style={{ marginTop: '10px' }}>
-                <span className="stat-label">Estimated Fatalities</span>
-                <span className="stat-value">{casualties?.total_fatalities ?? 'N/A'}</span>
-              </div>
-              <div className="stat-row">
-                <span className="stat-label">Estimated Injuries</span>
-                <span className="stat-value">{casualties?.total_injuries ?? 'N/A'}</span>
-              </div>
-              <div className="stat-row">
-                <span className="stat-label">Estimated Total Casualties</span>
-                <span className="stat-value">
-                  {(casualties?.total_fatalities !== undefined || casualties?.total_injuries !== undefined)
-                    ? (casualties.total_fatalities || 0) + (casualties.total_injuries || 0)
-                    : 'N/A'}
-                </span>
-              </div>
-            </div>
           </div>
         )}
 

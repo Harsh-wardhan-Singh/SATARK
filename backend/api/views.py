@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from rest_framework import status
@@ -17,8 +18,13 @@ from decision.intervention import (
 from simulation.engine import SimulationEngine
 from simulation.scenario import Scenario
 
+import json
+
+from algorithms.navigation import FloodSafeNavigationEngine
+
 from api.serializers import (
     InterventionRequestSerializer,
+    NavigationRequestSerializer,
     OptimizationCandidateSerializer,
     SimulationRequestSerializer,
     WorldStateSerializer,
@@ -135,6 +141,16 @@ class SimulationInitializeView(
                 )
             ),
         )
+        params = dict(validated.get("parameters", {}))
+        data_dir = Path(__file__).resolve().parent.parent / "data"
+        if "zone_mapping_path" not in params and (data_dir / "glb_zone_mapping.json").exists():
+            params["zone_mapping_path"] = str(data_dir / "glb_zone_mapping.json")
+        if "infrastructure_path" not in params and (data_dir / "infrastructure.json").exists():
+            params["infrastructure_path"] = str(data_dir / "infrastructure.json")
+        if "shelters_path" not in params and (data_dir / "shelters.json").exists():
+            params["shelters_path"] = str(data_dir / "shelters.json")
+        if "population_path" not in params and (data_dir / "population.json").exists():
+            params["population_path"] = str(data_dir / "population.json")
 
         scenario = Scenario(
             config=config,
@@ -144,12 +160,7 @@ class SimulationInitializeView(
                     {},
                 )
             ),
-            parameters=(
-                validated.get(
-                    "parameters",
-                    {},
-                )
-            ),
+            parameters=params,
         )
 
         engine = SimulationEngine(
@@ -157,9 +168,6 @@ class SimulationInitializeView(
         )
 
         engine.initialize()
-        
-        if config.calamity_type == CalamityType.EARTHQUAKE:
-            engine.step()
 
         _active_engine = engine
 
@@ -573,3 +581,160 @@ class SelectedInterventionView(
                 ),
             }
         )
+
+
+class NowcastView(APIView):
+    """
+    Returns 0-3 hour forward flood nowcast projections across all 21 zones.
+    Optional query parameter: ?horizons=1.0,2.0,3.0
+    """
+
+    def get(self, request, *args, **kwargs):
+        try:
+            engine = _require_engine()
+        except RuntimeError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        horizons_param = request.query_params.get("horizons")
+        if horizons_param:
+            try:
+                horizons = [
+                    float(h.strip())
+                    for h in horizons_param.split(",")
+                    if h.strip()
+                ]
+            except ValueError:
+                horizons = [1.0, 2.0, 3.0]
+        else:
+            horizons = [1.0, 2.0, 3.0]
+
+        try:
+            nowcast = engine.generate_nowcast(horizons_hours=horizons)
+            return Response(nowcast, status=status.HTTP_200_OK)
+        except Exception as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+_CACHED_WORLD_ZONES: list[dict[str, Any]] | None = None
+
+
+class WorldZonesView(APIView):
+    """
+    Returns the authoritative list of 21 simulation zones, their bounds,
+    elevation, and neighbor topology.
+    """
+
+    def get(self, request, *args, **kwargs):
+        global _CACHED_WORLD_ZONES
+        if _CACHED_WORLD_ZONES is None:
+            data_path = Path(__file__).resolve().parent.parent / "data" / "glb_zone_mapping.json"
+            if not data_path.exists():
+                return Response(
+                    {"detail": "Zone mapping data file not found."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            with open(data_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                _CACHED_WORLD_ZONES = data.get("zones", [])
+
+        return Response({"status": "SUCCESS", "count": len(_CACHED_WORLD_ZONES), "zones": _CACHED_WORLD_ZONES})
+
+
+class WorldSheltersView(APIView):
+    """
+    Returns municipal emergency shelters, capacities, and assigned zones.
+    """
+
+    def get(self, request, *args, **kwargs):
+        data_path = Path(__file__).resolve().parent.parent / "data" / "shelters.json"
+        if not data_path.exists():
+            return Response(
+                {"detail": "Shelters data file not found."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        with open(data_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            raw_shelters = data.get("shelters", [])
+
+        shelters = []
+        for s in raw_shelters:
+            item = dict(s)
+            item["zoneId"] = s.get("zone_id", s.get("zoneId", ""))
+            shelters.append(item)
+
+        return Response({"status": "SUCCESS", "count": len(shelters), "shelters": shelters})
+
+
+class WorldBoundsView(APIView):
+    """
+    Returns authoritative world coordinate bounds and axes from glb_zone_mapping.json.
+    """
+
+    def get(self, request, *args, **kwargs):
+        data_path = Path(__file__).resolve().parent.parent / "data" / "glb_zone_mapping.json"
+        if not data_path.exists():
+            return Response(
+                {"detail": "World mapping data file not found."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        with open(data_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            wcs = data.get("world_coordinate_system", {})
+            bounds = wcs.get("world_bounds", {})
+
+        return Response({
+            "status": "SUCCESS",
+            "bounds": bounds,
+            "world_coordinate_system": wcs,
+        })
+
+
+class NavigationRouteView(APIView):
+    """
+    Computes a risk-weighted, flood-safe evacuation/transit route between two zones
+    or coordinates, strictly avoiding submerged road segments (>30 cm depth).
+    """
+
+    def post(self, request, *args, **kwargs):
+        serializer = NavigationRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        origin = data.get("origin_zone") or data.get("origin")
+        destination = data.get("destination_zone") or data.get("destination")
+        allow_flooded = data.get("allow_flooded", False)
+
+        if not origin or not destination:
+            return Response(
+                {"detail": "Both 'origin' (or 'origin_zone') and 'destination' (or 'destination_zone') are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        global _active_engine
+        water_levels_m: dict[str, float] = {}
+        panic_scores: dict[str, float] = {}
+
+        if _active_engine is not None and _active_engine.is_initialized:
+            water_levels_m = _active_engine.world.state.environment.get("flood_water_levels", {})
+            panic_scores = _active_engine.panic_state
+
+        router = FloodSafeNavigationEngine()
+        route_result = router.find_route(
+            origin=origin,
+            destination=destination,
+            water_levels_m=water_levels_m,
+            panic_scores=panic_scores,
+            allow_flooded=allow_flooded,
+        )
+
+        return Response(route_result.to_dict(), status=status.HTTP_200_OK)
+
+

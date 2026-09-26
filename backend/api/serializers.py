@@ -338,3 +338,13 @@ class WorldStateSerializer(
                 instance.events
             ),
         }
+
+
+class NavigationRequestSerializer(serializers.Serializer):
+    """Validate parameters for flood-safe route calculation."""
+    origin = serializers.CharField(required=False, allow_blank=True)
+    origin_zone = serializers.CharField(required=False, allow_blank=True)
+    destination = serializers.CharField(required=False, allow_blank=True)
+    destination_zone = serializers.CharField(required=False, allow_blank=True)
+    allow_flooded = serializers.BooleanField(required=False, default=False)
+

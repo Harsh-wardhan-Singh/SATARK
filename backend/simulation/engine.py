@@ -7,16 +7,27 @@ from dataclasses import is_dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+import logging
 from agents.manager import AgentManager
 
 from algorithms.casualties.estimation import CasualtiesEngine
 from algorithms.flood.impact import FloodImpactEngine
+from algorithms.drainage import (
+    CoupledDrainageModel,
+    DrainageNetwork,
+)
 from algorithms.infrastructure.cascade import ExplainableNetwork
 from algorithms.population.crowd import CrowdDynamicsEngine
 from algorithms.population.evacuation import EvacuationEngine
 from algorithms.population.panic import PanicEngine
 from algorithms.intervention.recommendations import (
+    InterventionRuleEngine,
     RecommendationEngine as AlgorithmRecommendationEngine,
+)
+from algorithms.rainfall import (
+    HyetographEngine,
+    HyetographType,
+    NowcastEngine,
 )
 
 from calamities.flood import Flood
@@ -45,6 +56,23 @@ from decision.optimizer import (
     OptimizationResult,
     SimulationEvaluation,
 )
+
+from simulation.pipeline import (
+    SimulationPipeline,
+    SimulationStep,
+    StepContext,
+    RainfallStep,
+    DrainageStep,
+    SurfaceFloodStep,
+    FloodImpactStep,
+    InfrastructureCascadeStep,
+    HumanEvacuationStep,
+    RiskAssessmentStep,
+    DecisionInterventionStep,
+    MetricsStep,
+)
+
+logger = logging.getLogger(__name__)
 
 class SimulationEngine:
     """
@@ -113,7 +141,7 @@ class SimulationEngine:
         self._initial_entities = (
             list(entities)
             if entities is not None
-            else []
+            else list(scenario.initial_state.get("entities", []))
         )
 
         # --------------------------------------------------------------
@@ -265,7 +293,26 @@ class SimulationEngine:
 
         self._active_interventions: list[dict[str, Any]] = []
 
-        
+        self._cached_zone_mapping: (
+            dict[str, dict[str, Any]] | None
+        ) = None
+
+        self._pipeline: (
+            SimulationPipeline | None
+        ) = None
+
+        self._drainage_model: (
+            CoupledDrainageModel | None
+        ) = None
+
+        self._drainage_state: dict[
+            str,
+            Any,
+        ] = {}
+
+        self._hyetograph: (
+            HyetographEngine | None
+        ) = None
 
         # --------------------------------------------------------------
         # Lifecycle
@@ -309,10 +356,73 @@ class SimulationEngine:
         )
 
     @property
+    def is_finished(
+        self,
+    ) -> bool:
+        return self.is_complete
+
+    def run_until_complete(
+        self,
+    ) -> None:
+        while not self.is_complete:
+            self.step()
+
+    @property
+    def pipeline(
+        self,
+    ) -> SimulationPipeline | None:
+        return self._pipeline
+
+    @property
     def flood(
         self,
     ) -> Flood | None:
         return self._flood
+
+    @property
+    def drainage_model(
+        self,
+    ) -> CoupledDrainageModel | None:
+        return self._drainage_model
+
+    @property
+    def drainage_state(
+        self,
+    ) -> dict[str, Any]:
+        return dict(self._drainage_state)
+
+    @property
+    def hyetograph(
+        self,
+    ) -> HyetographEngine | None:
+        return self._hyetograph
+
+    @property
+    def flood_zone_data(
+        self,
+    ) -> dict[str, dict[str, Any]]:
+        return dict(self._flood_zone_data)
+
+    def generate_nowcast(
+        self,
+        horizons_hours: Sequence[float] = (1.0, 2.0, 3.0),
+    ) -> dict[str, Any]:
+        """
+        Generate forward flood projections for 0-3 hour horizons.
+        """
+        if self._flood is None or self._flood.propagator is None:
+            raise RuntimeError(
+                "Cannot generate nowcast: flood simulation is not initialized."
+            )
+
+        nowcast_engine = NowcastEngine(
+            propagator=self._flood.propagator,
+            hyetograph=self._hyetograph,
+        )
+        return nowcast_engine.generate_nowcast(
+            current_simulation_time=self.clock.simulation_time,
+            horizons_hours=horizons_hours,
+        )
 
     @property
     def infrastructure_state(
@@ -475,6 +585,7 @@ class SimulationEngine:
             calamity_type=(
                 self.scenario.calamity_type
             ),
+            environment=self.scenario.initial_state.get("environment"),
         )
 
         self._agent_manager = AgentManager(
@@ -484,6 +595,7 @@ class SimulationEngine:
         # Calamity/infrastructure state must exist before the human-response
         # layer constructs its casualty infrastructure adapter.
         self._initialize_calamity()
+        self._initialize_drainage()
 
         self._initialize_human_response()
 
@@ -494,6 +606,14 @@ class SimulationEngine:
         self._initialize_decision()
 
         self._optimization_result = None
+
+        # Cache zone mapping in memory on initialization (LL-6)
+        try:
+            self._cached_zone_mapping = self._load_agent_zone_mapping()
+        except Exception:
+            pass
+
+        self._build_pipeline()
 
         self._sync_world_time()
 
@@ -518,6 +638,90 @@ class SimulationEngine:
         self._initialized = True
 
         self._paused = False
+
+    def _build_pipeline(self) -> None:
+        """
+        Construct the discrete simulation step pipeline.
+        """
+        self._pipeline = SimulationPipeline([
+            RainfallStep(),
+            DrainageStep(),
+            SurfaceFloodStep(),
+            FloodImpactStep(),
+            InfrastructureCascadeStep(),
+            HumanEvacuationStep(),
+            RiskAssessmentStep(),
+            DecisionInterventionStep(),
+            MetricsStep(),
+        ])
+
+    def _create_step_context(self, delta_time: float) -> StepContext:
+        """
+        Create a StepContext snapshot reflecting current engine state.
+        """
+        return StepContext(
+            clock=self.clock,
+            world=self.world,
+            scenario=self.scenario,
+            delta_time=delta_time,
+            flood=self._flood,
+            flood_impact=self._flood_impact,
+            infrastructure_network=self._infrastructure_network,
+            panic_engine=self._panic_engine,
+            evacuation_engine=self._evacuation_engine,
+            crowd_engine=self._crowd_engine,
+            casualties_engine=self._casualties_engine,
+            risk_engine=self._risk_engine,
+            intervention_rule_engine=self._algorithm_recommendation_engine,
+            recommendation_engine=self._recommendation_engine,
+            agent_manager=self._agent_manager,
+            drainage_model=self._drainage_model,
+            hyetograph=self._hyetograph,
+            flood_zone_data=self._flood_zone_data,
+            cached_zone_mapping=self._cached_zone_mapping,
+            population_data=self._population_data,
+            flood_water_levels=dict(
+                self.world.state.environment.get("flood_water_levels", {})
+            ),
+            flood_impact_scores=dict(
+                self.world.state.environment.get("flood_impact_scores", {})
+            ),
+            infrastructure_state=dict(self._infrastructure_state),
+            panic_state=dict(self._panic_state),
+            evacuation_routes=dict(self._evacuation_routes),
+            crowd_state=dict(self._crowd_state),
+            casualty_state=dict(self._casualty_state),
+            casualty_population_reduction=dict(
+                self._casualty_population_reduction
+            ),
+            risk_assessment=self._risk_assessment,
+            risk_state=dict(self._risk_state),
+            priority_state=dict(self._priority_state),
+            recommendations=list(self._recommendations),
+            active_interventions=list(self._active_interventions),
+            human_response_enabled=self._human_response_enabled,
+            panic_accumulator=self._panic_accumulator,
+            population_model_step_seconds=self._population_model_step_seconds,
+            panic_threshold=self._panic_threshold,
+        )
+
+    def _sync_from_step_context(self, context: StepContext) -> None:
+        """
+        Synchronize engine properties from the mutated StepContext.
+        """
+        self._infrastructure_state = context.infrastructure_state
+        self._panic_state = context.panic_state
+        self._evacuation_routes = context.evacuation_routes
+        self._crowd_state = context.crowd_state
+        self._casualty_state = context.casualty_state
+        self._casualty_population_reduction = context.casualty_population_reduction
+        self._risk_assessment = context.risk_assessment
+        self._risk_state = context.risk_state
+        self._priority_state = context.priority_state
+        self._recommendations = context.recommendations
+        self._panic_accumulator = context.panic_accumulator
+        if context.drainage_state:
+            self._drainage_state = dict(context.drainage_state)
 
     # ------------------------------------------------------------------
     # Human-response initialization
@@ -852,7 +1056,11 @@ class SimulationEngine:
     ]:
         """
         Load the same zone mapping used by the simulation algorithms.
+        Caches mapping in memory after first load to eliminate disk I/O.
         """
+        if self._cached_zone_mapping is not None:
+            return self._cached_zone_mapping
+
         mapping_path = (
             self.scenario.zone_mapping_path
         )
@@ -860,11 +1068,12 @@ class SimulationEngine:
         if mapping_path:
             path = Path(mapping_path)
         elif self._flood_zone_data:
-            return {
+            self._cached_zone_mapping = {
                 str(zone_id): dict(zone)
                 for zone_id, zone
                 in self._flood_zone_data.items()
             }
+            return self._cached_zone_mapping
         else:
             raise ValueError(
                 "A zone_mapping_path is required for "
@@ -890,12 +1099,13 @@ class SimulationEngine:
                 "Zone mapping must contain a 'zones' list."
             )
 
-        return {
+        self._cached_zone_mapping = {
             str(zone["id"]): dict(zone)
             for zone in zones
             if isinstance(zone, Mapping)
             and "id" in zone
         }
+        return self._cached_zone_mapping
 
     # ------------------------------------------------------------------
     # Risk initialization
@@ -1030,100 +1240,10 @@ class SimulationEngine:
             self._initialize_flood()
             return
 
-        if (
-            self.scenario.calamity_type
-            == CalamityType.EARTHQUAKE
-        ):
-            self._initialize_earthquake()
-            return
-
         raise ValueError(
             "Unsupported calamity type: "
             f"{self.scenario.calamity_type}"
         )
-
-    def _initialize_earthquake(
-        self,
-    ) -> None:
-        
-        zone_mapping_path = (
-            self.scenario.zone_mapping_path
-        )
-        if not zone_mapping_path:
-            raise ValueError("Earthquake scenarios require the 'zone_mapping_path' parameter.")
-            
-        with Path(zone_mapping_path).open("r", encoding="utf-8") as f:
-            zone_data_raw = json.load(f)
-            
-        zone_data = {}
-        for z in zone_data_raw.get("zones", []):
-            if "center_world" in z:
-                # 1 degree of lat/lon is approx 111.32 km (111320 meters)
-                # Mapping world meters to degrees preserves true scale for haversine
-                z["lat"] = z["center_world"]["z"] / 111320.0
-                z["lon"] = z["center_world"]["x"] / 111320.0
-            else:
-                z["lat"] = 0.0
-                z["lon"] = 0.0
-            zone_data[z["id"]] = z
-
-        infrastructure_path = (
-            self.scenario.infrastructure_path
-        )
-        if not infrastructure_path:
-            raise ValueError("Earthquake scenarios require the 'infrastructure_path' parameter.")
-            
-        with Path(infrastructure_path).open("r", encoding="utf-8") as f:
-            infra_data_raw = json.load(f)
-        infra_nodes = infra_data_raw.get("infrastructure", [])
-
-        magnitude = float(self.scenario.get_parameter("magnitude", 5.0))
-        depth_km = float(self.scenario.get_parameter("depth_km", 10.0))
-        
-        zone_id = self.scenario.get_parameter("zone_id")
-        if zone_id and zone_id in zone_data:
-            epicenter_lat = zone_data[zone_id]["lat"]
-            epicenter_lon = zone_data[zone_id]["lon"]
-        else:
-            epicenter_lat = float(self.scenario.get_parameter("epicenter_lat", 0.0))
-            epicenter_lon = float(self.scenario.get_parameter("epicenter_lon", 0.0))
-
-        from calamities.earthquake import Earthquake
-        self._earthquake = Earthquake(
-            zone_data=zone_data,
-            infrastructure_data=infra_nodes,
-            epicenter_lat=epicenter_lat,
-            epicenter_lon=epicenter_lon,
-            magnitude=magnitude,
-            depth_km=depth_km,
-        )
-        self._earthquake.initialize()
-        
-        eq_state = self._earthquake.step(1.0)
-        
-        self.world.state.environment["earthquake_state"] = eq_state
-        self.world.state.environment["active_calamity"] = eq_state
-        
-        infra_damage = eq_state.get("damage", {}).get("infrastructure_damage", {})
-        self._infrastructure_state = {
-            str(node_id): {
-                "type": damage_info.get("type", "UNKNOWN"),
-                "zone_id": damage_info.get("zone_id"),
-                "capacity": damage_info.get("structural_integrity", 1.0)
-            }
-            for node_id, damage_info in infra_damage.items()
-        }
-        self.world.state.environment["infrastructure"] = self._infrastructure_state
-
-        self._infrastructure_network = ExplainableNetwork(
-            str(infrastructure_path)
-        )
-
-        self._casualty_state = {
-            "total_fatalities": 0,
-            "total_injuries": 0
-        }
-        self.world.state.environment["casualties"] = self._casualty_state
 
     def _initialize_flood(
         self,
@@ -1180,6 +1300,28 @@ class SimulationEngine:
                 .rainfall_intensity
             )
 
+        # Initialize authoritative hyetograph model
+        hyetograph_type = self.scenario.parameters.get(
+            "hyetograph_type", "CONSTANT"
+        )
+        peak_ratio = float(
+            self.scenario.parameters.get("peak_ratio", 0.375)
+        )
+        base_intensity = float(
+            self.scenario.parameters.get("base_rainfall_intensity", 5.0)
+        )
+        radar_series = self.scenario.parameters.get(
+            "radar_series", None
+        )
+        self._hyetograph = HyetographEngine(
+            hyetograph_type=hyetograph_type,
+            peak_intensity=self.scenario.rainfall_intensity,
+            duration_seconds=self.scenario.duration,
+            peak_ratio=peak_ratio,
+            base_intensity=base_intensity,
+            radar_series=radar_series,
+        )
+
         self._flood_zone_data = {
             zone["id"]: zone
             for zone in (
@@ -1220,6 +1362,37 @@ class SimulationEngine:
         )
 
         self._infrastructure_state = {}
+
+    def _initialize_drainage(self) -> None:
+        """
+        Initialize the authoritative stormwater drainage network and coupling model.
+        """
+        drainage_path = self.scenario.parameters.get(
+            "drainage_path",
+            self.scenario.parameters.get(
+                "drainage_network_path",
+                Path(__file__).resolve().parent.parent / "data" / "drainage_network.json",
+            ),
+        )
+
+        if drainage_path and Path(drainage_path).exists():
+            try:
+                network = DrainageNetwork.from_file(drainage_path)
+                self._drainage_model = CoupledDrainageModel(network=network)
+                logger.info(
+                    "Drainage network initialized with %d nodes and %d pipes.",
+                    len(network.nodes),
+                    len(network.pipes),
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to initialize drainage network from %s: %s",
+                    drainage_path,
+                    e,
+                )
+                self._drainage_model = None
+        else:
+            self._drainage_model = None
 
     # ------------------------------------------------------------------
     # Phase 14 — Intervention execution
@@ -1298,8 +1471,10 @@ class SimulationEngine:
                     self.world.state.environment["infrastructure"][node_id] = self._infrastructure_state[node_id]
 
         if self._risk_assessment:
-            self._step_risk()
-            self._step_decision()
+            ctx = self._create_step_context(0.0)
+            RiskAssessmentStep().execute(ctx)
+            DecisionInterventionStep().execute(ctx)
+            self._sync_from_step_context(ctx)
 
         self._active_interventions.append(dict(normalized))
 
@@ -2070,7 +2245,9 @@ class SimulationEngine:
 
         self._active_interventions = []
 
-        
+        self._cached_zone_mapping = None
+
+        self._pipeline = None
 
         self._optimization_result = None
 
@@ -2088,10 +2265,26 @@ class SimulationEngine:
 
     def step(
         self,
-    ) -> None:
+    ) -> float:
+        """
+        Advance the simulation by one tick using the pipeline.
+
+        Execution order:
+            1. RainfallStep
+            2. DrainageStep
+            3. SurfaceFloodStep
+            4. FloodImpactStep
+            5. InfrastructureCascadeStep
+            6. HumanEvacuationStep
+            7. RiskAssessmentStep
+            8. DecisionInterventionStep
+            9. MetricsStep
+        """
 
         if not self._initialized:
-            self.initialize()
+            raise RuntimeError(
+                "SimulationEngine must be initialized before stepping."
+            )
 
         if self._paused:
             raise RuntimeError(
@@ -2104,1703 +2297,38 @@ class SimulationEngine:
                 "been reached."
             )
 
-        delta_time = (
-            self.clock.advance()
-        )
+        delta_time = self.clock.advance()
 
         self._sync_world_time()
 
-        # --------------------------------------------------------------
-        # 1. Disaster
-        # --------------------------------------------------------------
+        # Build context, execute all pipeline steps, sync state back
+        context = self._create_step_context(delta_time)
+        self._pipeline.execute(context)
+        self._sync_from_step_context(context)
 
-        self._step_calamity(
-            delta_time
+        # Handle pending scenario intervention flagged by DecisionStep
+        pending = self.world.state.environment.pop(
+            "_pending_scenario_intervention", None
         )
+        if pending is not None:
+            self._apply_scenario_intervention(pending)
 
-        # --------------------------------------------------------------
-        # 2. Human response
-        # --------------------------------------------------------------
-
-        self._step_human_response(
-            delta_time
-        )
-
-        # --------------------------------------------------------------
-        # 3. Risk
-        # --------------------------------------------------------------
-
-        self._step_risk()
-
-        # --------------------------------------------------------------
-        # 4. Decision
-        # --------------------------------------------------------------
-
-        self._step_decision()
-
-        # --------------------------------------------------------------
-        # 5. Metrics
-        # --------------------------------------------------------------
-
-        self._update_basic_metrics()
-
-        self.world.state.record_event(
-            {
-                "type": "SIMULATION_TICK",
-                "tick": (
-                    self.clock.current_tick
-                ),
-            }
-        )
+        return delta_time
 
     # ------------------------------------------------------------------
-    # Calamity progression
+    # World synchronization
     # ------------------------------------------------------------------
 
-    def _step_calamity(
-        self,
-        delta_time: float,
-    ) -> None:
-
-        if (
-            self.scenario.calamity_type
-            == CalamityType.FLOOD
-        ):
-            self._step_flood(
-                delta_time
-            )
-        elif (
-            self.scenario.calamity_type
-            == CalamityType.EARTHQUAKE
-        ):
-            pass # Earthquake is event-based and already stepped in initialize
-
-    def _apply_live_intervention_to_flood(
+    def _sync_world_time(
         self,
     ) -> None:
-        """
-        Transfer the active flood intervention into the authoritative
-        FloodPropagator state before the next flood-model step.
 
-        The intervention algorithm remains responsible for producing the
-        modified drainage values. This method only transfers those values
-        into the existing flood simulation.
-        """
-
-        if self._flood is None:
-            return
-
-        if self._flood.propagator is None:
-            return
-
-        intervention_zones = (
-            self.world.state.environment.get(
-                "intervention_zones",
-                {},
-            )
+        self.world.state.current_tick = (
+            self.clock.current_tick
         )
 
-        if not isinstance(
-            intervention_zones,
-            Mapping,
-        ):
-            return
-
-        for zone_id, zone_state in intervention_zones.items():
-            if not isinstance(zone_state, Mapping):
-                continue
-
-            drainage_rate = zone_state.get(
-                "drainage_rate"
-            )
-
-            if drainage_rate is None:
-                continue
-
-            zone_state_in_model = (
-                self._flood.propagator.state.get(
-                    zone_id
-                )
-            )
-
-            if zone_state_in_model is not None:
-                zone_state_in_model[
-                    "drainage_capacity"
-                ] = max(
-                    0.0,
-                    float(drainage_rate),
-                )
-
-    def _apply_live_intervention_to_infrastructure(
-        self,
-    ) -> None:
-        """
-        Transfer intervention-provided backup power into the canonical
-        ExplainableNetwork before its next cascade calculation.
-        """
-
-        if self._infrastructure_network is None:
-            return
-
-        intervention_nodes = (
-            self.world.state.environment.get(
-                "intervention_infrastructure",
-                {},
-            )
-        )
-
-        if not isinstance(
-            intervention_nodes,
-            Mapping,
-        ):
-            return
-
-        for node_id, intervention_state in intervention_nodes.items():
-            if not isinstance(intervention_state, Mapping):
-                continue
-
-            node = self._infrastructure_network.nodes.get(
-                node_id
-            )
-
-            if node is None:
-                continue
-
-            if "backup_power" in intervention_state:
-                node["backup_power"] = max(
-                    float(
-                        node.get(
-                            "backup_power",
-                            0.0,
-                        )
-                    ),
-                    float(
-                        intervention_state[
-                            "backup_power"
-                        ]
-                    ),
-                )
-
-    def _apply_live_intervention_to_crowd(
-        self,
-    ) -> None:
-        """
-        Transfer intervention-adjusted transit capacities into the
-        existing CrowdDynamicsEngine.
-        """
-
-        if self._crowd_engine is None:
-            return
-
-        transit_capacities = (
-            self.world.state.environment.get(
-                "transit_capacities",
-                {},
-            )
-        )
-
-        if not isinstance(
-            transit_capacities,
-            Mapping,
-        ):
-            return
-
-        self._crowd_engine.transit_capacities = {
-            str(zone_id): max(
-                0.0,
-                float(capacity),
-            )
-            for zone_id, capacity
-            in transit_capacities.items()
-        }
-
-    def _get_effective_crowd_panic_states(
-        self,
-    ) -> dict[str, float]:
-        """
-        Convert the active movement-speed intervention into the panic
-        movement rate used by the existing crowd algorithm.
-
-        CrowdDynamicsEngine currently derives movement as:
-
-            0.4 + (0.4 * panic)
-
-        Therefore the multiplier can be applied exactly to that movement
-        rate without changing the underlying crowd algorithm.
-        """
-
-        panic_states = dict(
-            self._panic_state
-        )
-
-        if not self._active_interventions:
-            return panic_states
-        
-        # Take the most recent mandatory_evacuation_order if multiple exist
-        intervention = next((i for i in reversed(self._active_interventions) if str(i.get("intervention_id", i.get("id", i.get("action", "")))) == "mandatory_evacuation_order"), None)
-        if not intervention:
-            return panic_states
-
-        intervention_id = str(
-            intervention.get(
-                "intervention_id",
-                intervention.get(
-                    "id",
-                    intervention.get(
-                        "action",
-                        "",
-                    ),
-                ),
-            )
-        )
-
-        if intervention_id != "mandatory_evacuation_order":
-            return panic_states
-
-        effect = (
-            intervention.get(
-                "expected_effects",
-                intervention.get(
-                    "effect",
-                    {},
-                ),
-            )
-        )
-
-        if not isinstance(
-            effect,
-            Mapping,
-        ):
-            return panic_states
-
-        multiplier = float(
-            effect.get(
-                "movement_speed_multiplier",
-                1.0,
-            )
-        )
-
-        if multiplier <= 1.0:
-            return panic_states
-
-        effective = {}
-
-        for zone_id, panic in panic_states.items():
-            base_rate = 0.4 + (
-                0.4 * float(panic)
-            )
-            target_rate = min(
-                1.0,
-                base_rate * multiplier,
-            )
-            effective_panic = (
-                (target_rate - 0.4)
-                / 0.4
-            )
-            effective[str(zone_id)] = max(
-                0.0,
-                min(
-                    1.0,
-                    effective_panic,
-                ),
-            )
-
-        return effective
-
-    def _step_flood(
-        self,
-        delta_time: float,
-    ) -> None:
-
-        if self._flood is None:
-            raise RuntimeError(
-                "Flood calamity has not been initialized."
-            )
-
-        if self._flood_impact is None:
-            raise RuntimeError(
-                "Flood impact engine has not been initialized."
-            )
-
-        if self._infrastructure_network is None:
-            raise RuntimeError(
-                "Infrastructure cascade network "
-                "has not been initialized."
-            )
-
-        self._apply_live_intervention_to_flood()
-
-        flood_state = self._flood.step(
-            delta_time
-        )
-
-        water_levels = flood_state[
-            "water_levels"
-        ]
-        
-        num_flooded = len([v for v in water_levels.values() if v > 0])
-        max_level = max(water_levels.values()) if water_levels else 0.0
-        print(f"[BACKEND FLOOD STEP] delta_time={delta_time} simTimeBefore=??? simTimeAfter={self.clock.simulation_time} "
-              f"rainfall={self.scenario.rainfall_intensity} floodedZones={num_flooded} maxWater={max_level}")
-
-        self.world.state.environment[
-            "rainfall_intensity"
-        ] = (
-            self.scenario
-            .rainfall_intensity
-        )
-
-        self.world.state.environment[
-            "flood_water_levels"
-        ] = dict(
-            water_levels
-        )
-
-        for (
-            zone_id,
-            water_level,
-        ) in water_levels.items():
-
-            self.world.state.update_metric(
-                f"flood_water_{zone_id}",
-                float(
-                    water_level
-                ),
-            )
-
-        day = max(
-            1,
-            int(
-                self.clock.simulation_time
-                / 86400.0
-            ) + 1,
-        )
-
-        impact_scores = (
-            self._flood_impact
-            .calculate_impacts(
-                water_levels,
-                self._flood_zone_data,
-                severity=(
-                    self.scenario.severity
-                ),
-                day=day,
-                intervention_level=(
-                    self.scenario
-                    .intervention_level
-                ),
-            )
-        )
-
-        self.world.state.environment[
-            "flood_impact_scores"
-        ] = dict(
-            impact_scores
-        )
-
-        for (
-            zone_id,
-            impact,
-        ) in impact_scores.items():
-
-            self.world.state.update_metric(
-                f"flood_impact_{zone_id}",
-                float(
-                    impact
-                ),
-            )
-
-        self._step_infrastructure(
-            impact_scores
-        )
-
-        self.world.state.record_event(
-            {
-                "type": "FLOOD_STATE_UPDATED",
-                "tick": (
-                    self.clock.current_tick
-                ),
-                "water_levels": dict(
-                    water_levels
-                ),
-                "impact_scores": dict(
-                    impact_scores
-                ),
-            }
-        )
-
-    # ------------------------------------------------------------------
-    # Infrastructure
-    # ------------------------------------------------------------------
-
-    def _step_infrastructure(
-        self,
-        impact_scores: Mapping[
-            str,
-            float,
-        ],
-    ) -> None:
-
-        if (
-            self._infrastructure_network
-            is None
-        ):
-            raise RuntimeError(
-                "Infrastructure cascade network "
-                "has not been initialized."
-            )
-
-        self._apply_live_intervention_to_infrastructure()
-
-        self._infrastructure_network.simulate_timestep(
-            dict(
-                impact_scores
-            )
-        )
-
-        infrastructure_state: dict[
-            str,
-            dict[str, Any],
-        ] = {}
-
-        for (
-            node_id,
-            node,
-        ) in (
-            self._infrastructure_network
-            .nodes
-            .items()
-        ):
-
-            capacity = float(
-                node.get(
-                    "capacity",
-                    1.0,
-                )
-            )
-
-            reason = str(
-                node.get(
-                    "status_reason",
-                    "Unknown",
-                )
-            )
-
-            node_state = {
-                "id": node_id,
-                "name": node.get(
-                    "name",
-                    node_id,
-                ),
-                "type": node.get(
-                    "type",
-                    "UNKNOWN",
-                ),
-                "zone_id": node.get(
-                    "zone_id"
-                ),
-                "capacity": capacity,
-                "status_reason": reason,
-            }
-
-            infrastructure_state[
-                node_id
-            ] = node_state
-
-            self.world.state.update_metric(
-                f"infrastructure_capacity_{node_id}",
-                capacity,
-            )
-
-        self._infrastructure_state = (
-            infrastructure_state
-        )
-
-        self.world.state.environment[
-            "infrastructure"
-        ] = {
-            node_id: dict(
-                node_state
-            )
-            for (
-                node_id,
-                node_state,
-            ) in infrastructure_state.items()
-        }
-
-        self.world.state.record_event(
-            {
-                "type": (
-                    "INFRASTRUCTURE_STATE_UPDATED"
-                ),
-                "tick": (
-                    self.clock.current_tick
-                ),
-                "infrastructure": {
-                    node_id: dict(
-                        node_state
-                    )
-                    for (
-                        node_id,
-                        node_state,
-                    ) in infrastructure_state.items()
-                },
-            }
-        )
-
-    # ------------------------------------------------------------------
-    # Evacuation / infrastructure coupling
-    # ------------------------------------------------------------------
-
-    def _build_effective_evacuation_flood_states(
-        self,
-        flood_states: Mapping[str, float],
-    ) -> dict[str, float]:
-        """
-        Translate infrastructure degradation into additional evacuation
-        hazard while keeping the existing Dijkstra implementation
-        authoritative.
-        """
-
-        effective = {
-            str(zone_id): max(
-                0.0,
-                min(
-                    1.0,
-                    float(value),
-                ),
-            )
-            for zone_id, value
-            in flood_states.items()
-        }
-
-        route_capacities: dict[
-            str,
-            list[float],
-        ] = {}
-
-        for node_state in self._infrastructure_state.values():
-
-            zone_id = node_state.get("zone_id")
-
-            if zone_id is None:
-                continue
-
-            node_type = str(
-                node_state.get(
-                    "type",
-                    "",
-                )
-            ).lower()
-
-            if not any(
-                token in node_type
-                for token in (
-                    "road",
-                    "bridge",
-                    "transport",
-                    "corridor",
-                    "route",
-                )
-            ):
-                continue
-
-            try:
-                capacity = float(
-                    node_state.get(
-                        "capacity",
-                        1.0,
-                    )
-                )
-            except (
-                TypeError,
-                ValueError,
-            ):
-                continue
-
-            route_capacities.setdefault(
-                str(zone_id),
-                [],
-            ).append(
-                max(
-                    0.0,
-                    min(
-                        1.0,
-                        capacity,
-                    ),
-                )
-            )
-
-        for zone_id, capacities in route_capacities.items():
-
-            if not capacities:
-                continue
-
-            minimum_capacity = min(
-                capacities
-            )
-
-            base_water = effective.get(
-                zone_id,
-                0.0,
-            )
-
-            if minimum_capacity <= 0.0:
-                # Existing evacuation logic blocks traversal at high water.
-                effective[zone_id] = 1.0
-
-            elif minimum_capacity < 0.5:
-                # Severely degraded route infrastructure becomes blocked.
-                effective[zone_id] = max(
-                    base_water,
-                    0.81,
-                )
-
-            elif minimum_capacity < 0.9:
-                # Degraded but usable route: increase its Dijkstra cost.
-                effective[zone_id] = max(
-                    base_water,
-                    min(
-                        0.79,
-                        base_water
-                        + (
-                            (1.0 - minimum_capacity)
-                            * 0.35
-                        ),
-                    ),
-                )
-
-        return effective
-
-    # ------------------------------------------------------------------
-    # Human response
-    # ------------------------------------------------------------------
-
-    def _step_human_response(
-        self,
-        delta_time: float,
-    ) -> None:
-
-        if not self._human_response_enabled:
-            return
-
-        if self._panic_engine is None:
-            return
-
-        self._panic_accumulator += (
-            delta_time
-        )
-
-        is_earthquake = (
-            self.scenario.calamity_type
-            == CalamityType.EARTHQUAKE
-        )
-
-        if not is_earthquake and (
-            self._panic_accumulator
-            < self._population_model_step_seconds
-        ):
-            return
-
-        self._panic_accumulator = (
-            self._panic_accumulator
-            % self._population_model_step_seconds
-        )
-
-        flood_states = (
-            self.world.state.environment.get(
-                "flood_water_levels",
-                {},
-            )
-        )
-
-        flood_impacts = (
-            self.world.state.environment.get(
-                "flood_impact_scores",
-                {},
-            )
-        )
-
-        if not isinstance(
-            flood_states,
-            Mapping,
-        ):
-            flood_states = {}
-
-        if not isinstance(
-            flood_impacts,
-            Mapping,
-        ):
-            flood_impacts = {}
-
-        # --------------------------------------------------------------
-        # Panic
-        # --------------------------------------------------------------
-
-        self._panic_state = (
-            self._panic_engine.update_panic(
-                flood_impacts=dict(
-                    flood_impacts
-                ),
-                infra_states=(
-                    self._infrastructure_state
-                ),
-            )
-        )
-
-        self.world.state.environment[
-            "panic_by_zone"
-        ] = dict(
-            self._panic_state
-        )
-
-        for (
-            zone_id,
-            panic_level,
-        ) in self._panic_state.items():
-
-            self.world.state.update_metric(
-                f"panic_{zone_id}",
-                float(
-                    panic_level
-                ),
-            )
-
-        # --------------------------------------------------------------
-        # Evacuation
-        # --------------------------------------------------------------
-
-        if (
-            self._evacuation_engine
-            is not None
-        ):
-
-            effective_evacuation_flood_states = (
-                self._build_effective_evacuation_flood_states(
-                    flood_states
-                )
-            )
-
-            self.world.state.environment[
-                "evacuation_hazard_states"
-            ] = dict(
-                effective_evacuation_flood_states
-            )
-
-            evacuation_result = (
-                self._evacuation_engine
-                .calculate_evacuation_routes(
-                    flood_states=dict(
-                        effective_evacuation_flood_states
-                    ),
-                    panic_states=dict(
-                        self._panic_state
-                    ),
-                )
-            )
-
-            if (
-                isinstance(
-                    evacuation_result,
-                    Mapping,
-                )
-                and evacuation_result.get(
-                    "status"
-                )
-                == "CRITICAL"
-            ):
-                self._evacuation_routes = {}
-
-            else:
-                self._evacuation_routes = dict(
-                    evacuation_result
-                )
-
-                if (
-                    self._agent_manager
-                    is not None
-                ):
-
-                    assigned = (
-                        self._agent_manager
-                        .assign_evacuation_routes(
-                            self._evacuation_routes,
-                            zone_mapping=(
-                                self._load_agent_zone_mapping()
-                            ),
-                        )
-                    )
-
-                    self.world.state.update_metric(
-                        "agents_with_evacuation_routes",
-                        float(
-                            assigned
-                        ),
-                    )
-
-            self.world.state.environment[
-                "evacuation_routes"
-            ] = dict(
-                self._evacuation_routes
-            )
-
-        # --------------------------------------------------------------
-        # Agent panic
-        # --------------------------------------------------------------
-
-        safe_centers = [
-            entity
-            for entity in (
-                self.world.state
-                .get_entities()
-            )
-            if isinstance(
-                entity,
-                Facility,
-            )
-            and entity.is_safe_center
-            and entity.is_operational
-            and entity.available_capacity > 0
-        ]
-
-        transitioned = 0
-
-        if (
-            self._agent_manager
-            is not None
-        ):
-
-            transitioned = (
-                self._agent_manager
-                .trigger_panic_for_zones(
-                    panic_by_zone=(
-                        self._panic_state
-                    ),
-                    safe_centers=(
-                        safe_centers
-                    ),
-                    threshold=(
-                        self._panic_threshold
-                    ),
-                )
-            )
-
-            # HumanAgents now advance after the zone-level evacuation
-            # route is calculated and before crowd/casualty calculations.
-            self._update_agents(
-                delta_time
-            )
-
-            self._reconcile_shelter_intake()
-
-        # --------------------------------------------------------------
-    # ------------------------------------------------------------------
-    # Shelter intake reconciliation
-    # ------------------------------------------------------------------
-
-        # --------------------------------------------------------------
-        # Crowd
-        # --------------------------------------------------------------
-
-        if (
-            self._crowd_engine
-            is not None
-        ):
-
-            self._apply_live_intervention_to_crowd()
-
-            crowd_panic_states = (
-                self._get_effective_crowd_panic_states()
-            )
-
-            self._crowd_state = (
-                self._crowd_engine
-                .simulate_movement_step(
-                    evacuation_routes=(
-                        self._evacuation_routes
-                    ),
-                    panic_states=(
-                        crowd_panic_states
-                    ),
-                )
-            )
-
-            self.world.state.environment[
-                "crowd"
-            ] = dict(
-                self._crowd_state
-            )
-
-            self.world.state.environment[
-                "shelter_occupancy"
-            ] = {
-                str(shelter_id): float(
-                    shelter.get(
-                        "current_occupancy",
-                        0.0,
-                    )
-                )
-                for shelter_id, shelter
-                in self._crowd_engine.shelters.items()
-                if isinstance(
-                    shelter,
-                    Mapping,
-                )
-            }
-
-            bottlenecks = (
-                self._crowd_state.get(
-                    "bottlenecks",
-                    {},
-                )
-            )
-
-            if isinstance(
-                bottlenecks,
-                Mapping,
-            ):
-
-                self.world.state.environment[
-                    "bottlenecks"
-                ] = dict(
-                    bottlenecks
-                )
-
-                for zone_id, value in bottlenecks.items():
-
-                    self.world.state.update_metric(
-                        f"bottleneck_{zone_id}",
-                        float(value),
-                    )
-
-        # --------------------------------------------------------------
-        # Casualties
-        # --------------------------------------------------------------
-
-        if (
-            self._casualties_engine
-            is not None
-        ):
-
-            current_populations = (
-                self._get_current_populations()
-            )
-
-            bottlenecks = (
-                self._crowd_state.get(
-                    "bottlenecks",
-                    {},
-                )
-            )
-
-            earthquake_state = self.world.state.environment.get("earthquake_state")
-
-            self._casualty_state = (
-                self._casualties_engine
-                .update_casualties(
-                    current_populations=(
-                        current_populations
-                    ),
-                    flood_states=dict(
-                        flood_states
-                    ),
-                    bottlenecks=dict(
-                        bottlenecks
-                    ),
-                    panic_states=dict(
-                        self._panic_state
-                    ),
-                    infra_states=(
-                        self._infrastructure_state
-                    ),
-                    earthquake_state=earthquake_state,
-                    time_step_seconds=delta_time,
-                )
-            )
-
-            self.world.state.environment[
-                "casualties"
-            ] = dict(
-                self._casualty_state
-            )
-
-            self.world.state.update_metric(
-                "total_fatalities",
-                float(
-                    self._casualty_state.get(
-                        "total_fatalities",
-                        0,
-                    )
-                ),
-            )
-
-            self.world.state.update_metric(
-                "total_injuries",
-                float(
-                    self._casualty_state.get(
-                        "total_injuries",
-                        0,
-                    )
-                ),
-            )
-
-            self._apply_cumulative_casualty_reduction()
-
-        self.world.state.record_event(
-            {
-                "type": (
-                    "HUMAN_RESPONSE_UPDATED"
-                ),
-                "tick": (
-                    self.clock.current_tick
-                ),
-                "panic_by_zone": dict(
-                    self._panic_state
-                ),
-                "evacuation_routes": dict(
-                    self._evacuation_routes
-                ),
-                "agents_transitioned_to_panic": (
-                    transitioned
-                ),
-                "crowd": dict(
-                    self._crowd_state
-                ),
-                "casualties": dict(
-                    self._casualty_state
-                ),
-            }
-        )
-
-    # ------------------------------------------------------------------
-    # Shelter intake reconciliation
-    # ------------------------------------------------------------------
-
-    def _reconcile_shelter_intake(
-        self,
-    ) -> Dict[str, float]:
-        """
-        Reconcile SAFE HumanAgent intake with the existing crowd shelter
-        state without double-counting people already admitted by the
-        CrowdDynamicsEngine.
-        """
-
-        if (
-            self._agent_manager is None
-            or self._crowd_engine is None
-        ):
-            return {}
-
-        intake = (
-            self._agent_manager
-            .register_safe_agent_intake()
-        )
-
-        if not intake:
-            return {}
-
-        shelter_state: Dict[str, float] = {}
-
-        for shelter_id, amount in intake.items():
-
-            shelter = (
-                self._crowd_engine
-                .shelters
-                .get(
-                    shelter_id
-                )
-            )
-
-            if not isinstance(
-                shelter,
-                Mapping,
-            ):
-                continue
-
-            current = float(
-                shelter.get(
-                    "current_occupancy",
-                    0.0,
-                )
-            )
-
-            capacity = float(
-                shelter.get(
-                    "capacity",
-                    0.0,
-                )
-            )
-
-            # The crowd algorithm already performs aggregate intake.
-            # Never add the same cohort a second time.
-            reconciled = min(
-                capacity,
-                max(
-                    current,
-                    float(amount),
-                ),
-            )
-
-            shelter[
-                "current_occupancy"
-            ] = reconciled
-
-            shelter_state[
-                str(shelter_id)
-            ] = reconciled
-
-        self.world.state.environment[
-            "shelter_agent_intake"
-        ] = dict(
-            intake
-        )
-
-        return shelter_state
-
-    # ------------------------------------------------------------------
-    # Casualty population feedback
-    # ------------------------------------------------------------------
-
-    def _apply_cumulative_casualty_reduction(
-        self,
-    ) -> None:
-        """
-        Remove cumulative fatalities from active crowd populations.
-
-        CasualtiesEngine owns cumulative casualty estimation.
-        CrowdDynamicsEngine owns population movement. This bridge makes
-        fatalities persistent in the aggregate population state.
-        """
-
-        if self._crowd_engine is None:
-            return
-
-        breakdown = (
-            self._casualty_state.get(
-                "zone_breakdown",
-                {},
-            )
-            if isinstance(
-                self._casualty_state,
-                Mapping,
-            )
-            else {}
-        )
-
-        if not isinstance(
-            breakdown,
-            Mapping,
-        ):
-            return
-
-        for zone_id, casualty_state in breakdown.items():
-
-            if not isinstance(
-                casualty_state,
-                Mapping,
-            ):
-                continue
-
-            try:
-                cumulative_fatalities = max(
-                    0.0,
-                    float(
-                        casualty_state.get(
-                            "fatalities",
-                            0.0,
-                        )
-                    ),
-                )
-            except (
-                TypeError,
-                ValueError,
-            ):
-                continue
-
-            zone_key = str(
-                zone_id
-            )
-
-            previous = (
-                self._casualty_population_reduction.get(
-                    zone_key,
-                    0.0,
-                )
-            )
-
-            newly_removed = max(
-                0.0,
-                cumulative_fatalities
-                - previous,
-            )
-
-            self._casualty_population_reduction[
-                zone_key
-            ] = cumulative_fatalities
-
-            if newly_removed <= 0:
-                continue
-
-            current = float(
-                self._crowd_engine
-                .zone_populations
-                .get(
-                    zone_id,
-                    0.0,
-                )
-            )
-
-            self._crowd_engine.zone_populations[
-                zone_id
-            ] = max(
-                0.0,
-                current - newly_removed,
-            )
-
-        active_population = {
-            str(zone_id): float(
-                population
-            )
-            for zone_id, population
-            in self._crowd_engine
-            .zone_populations.items()
-        }
-
-        self.world.state.environment[
-            "active_zone_population"
-        ] = dict(
-            active_population
-        )
-
-        self.world.state.update_metric(
-            "active_population",
-            float(
-                sum(
-                    active_population.values()
-                )
-            ),
-        )
-
-    def _get_current_populations(
-        self,
-    ) -> dict[
-        str,
-        float,
-    ]:
-
-        if (
-            self._crowd_engine
-            is not None
-        ):
-
-            populations = {
-                str(zone_id): float(
-                    population
-                )
-                for (
-                    zone_id,
-                    population,
-                ) in (
-                    self._crowd_engine
-                    .zone_populations
-                    .items()
-                )
-            }
-
-            self.world.state.environment[
-                "zone_population"
-            ] = dict(
-                populations
-            )
-
-            self.world.state.environment[
-                "active_zone_population"
-            ] = dict(
-                populations
-            )
-
-            self.world.state.update_metric(
-                "active_population",
-                float(
-                    sum(
-                        populations.values()
-                    )
-                ),
-            )
-
-            return populations
-
-        if (
-            self._agent_manager
-            is not None
-        ):
-
-            return {
-                zone_id: float(
-                    population
-                )
-                for (
-                    zone_id,
-                    population,
-                ) in (
-                    self._agent_manager
-                    .get_zone_population()
-                    .items()
-                )
-            }
-
-        return {}
-
-    # ------------------------------------------------------------------
-    # Risk
-    # ------------------------------------------------------------------
-
-    def _step_risk(
-        self,
-    ) -> None:
-        """
-        Evaluate overall risk from authoritative simulation outputs.
-        """
-
-        flood_states = (
-            self.world.state.environment.get(
-                "flood_water_levels",
-                {},
-            )
-        )
-
-        bottlenecks = (
-            self.world.state.environment.get(
-                "bottlenecks",
-                {},
-            )
-        )
-
-        casualties = (
-            self.world.state.environment.get(
-                "casualties",
-                {},
-            )
-        )
-
-        infrastructure = (
-            self.world.state.environment.get(
-                "infrastructure",
-                {},
-            )
-        )
-
-        if not isinstance(
-            flood_states,
-            Mapping,
-        ):
-            flood_states = {}
-
-        if not isinstance(
-            bottlenecks,
-            Mapping,
-        ):
-            bottlenecks = {}
-
-        if not isinstance(
-            casualties,
-            Mapping,
-        ):
-            casualties = {}
-
-        if not isinstance(
-            infrastructure,
-            Mapping,
-        ):
-            infrastructure = {}
-
-        active_population = (
-            self.world.state.environment.get(
-                "active_zone_population",
-                {},
-            )
-        )
-
-        if isinstance(
-            active_population,
-            Mapping,
-        ):
-            total_population = int(
-                round(
-                    sum(
-                        float(value)
-                        for value
-                        in active_population.values()
-                    )
-                )
-            )
-        else:
-            total_population = (
-                self._get_base_total_population()
-            )
-
-        if total_population <= 0:
-            total_population = (
-                self._get_base_total_population()
-            )
-
-        self._risk_assessment = (
-            self._risk_engine.evaluate(
-                casualties=(
-                    casualties
-                ),
-                infrastructure=(
-                    infrastructure
-                ),
-                flood_states=(
-                    flood_states
-                ),
-                bottlenecks=(
-                    bottlenecks
-                ),
-                base_total_population=(
-                    total_population
-                ),
-            )
-        )
-
-        self._risk_state = (
-            self._risk_assessment
-            .to_dict()
-        )
-
-        self.world.state.environment[
-            "risk"
-        ] = {
-            "available": True,
-            "assessment": dict(
-                self._risk_state
-            ),
-        }
-
-        self.world.state.update_metric(
-            "composite_risk_score",
-            float(
-                self._risk_assessment
-                .composite_risk_score
-            ),
-        )
-
-        self.world.state.record_event(
-            {
-                "type": (
-                    "RISK_ASSESSMENT_UPDATED"
-                ),
-                "tick": (
-                    self.clock.current_tick
-                ),
-                "assessment": dict(
-                    self._risk_state
-                ),
-            }
-        )
-
-    # ------------------------------------------------------------------
-    # Base population
-    # ------------------------------------------------------------------
-
-    def _get_base_total_population(
-        self,
-    ) -> int:
-
-        if self._population_data is None:
-            return 0
-
-        zones = (
-            self._population_data.get(
-                "zones",
-                [],
-            )
-        )
-
-        if not isinstance(
-            zones,
-            list,
-        ):
-            return 0
-
-        total_population = 0
-
-        for zone in zones:
-
-            if not isinstance(
-                zone,
-                Mapping,
-            ):
-                continue
-
-            population = zone.get(
-                "resident_population_estimate",
-                0,
-            )
-
-            try:
-                total_population += int(
-                    population
-                )
-            except (
-                TypeError,
-                ValueError,
-            ):
-                continue
-
-        return total_population
-
-    # ------------------------------------------------------------------
-    # Phase 12 — Decision
-    # ------------------------------------------------------------------
-
-    def _step_decision(
-        self,
-    ) -> None:
-        """
-        Convert the current RiskAssessment into:
-
-            priority
-            ↓
-            algorithm recommendations
-            ↓
-            structured recommendations
-            ↓
-            optional explicit intervention
-
-        The system recommendation is NOT automatically applied.
-
-        Automatic application would destroy the baseline simulation
-        required for Phase 13 scenario comparison.
-
-        An intervention is applied only when explicitly supplied through
-        Scenario.intervention.
-        """
-
-        if self._risk_assessment is None:
-            return
-
-        risk_assessment = dict(
-            self._risk_state
-        )
-
-        # --------------------------------------------------------------
-        # Priority
-        # --------------------------------------------------------------
-
-        priority_result = (
-            self._recommendation_engine
-            .priority_engine
-            .evaluate(
-                risk_assessment
-            )
-        )
-
-        self._priority_state = (
-            priority_result.to_dict()
-        )
-
-        self.world.state.environment[
-            "decision"
-        ] = {
-            "priority": dict(
-                self._priority_state
-            ),
-            "recommendations": [],
-            "active_interventions": (
-                self.active_interventions
-            ),
-        }
-
-        # --------------------------------------------------------------
-        # Existing recommendation algorithm
-        # --------------------------------------------------------------
-
-        applied_ids = [str(i.get("intervention_id", i.get("id", i.get("action", "")))) for i in self._active_interventions]
-        raw_recommendations = (
-            self._algorithm_recommendation_engine
-            .generate_recommendations(
-                risk_assessment,
-                applied_intervention_ids=applied_ids
-            )
-        )
-
-        # --------------------------------------------------------------
-        # Decision-layer adapter
-        # --------------------------------------------------------------
-
-        self._recommendations = (
-            self._recommendation_engine
-            .recommend(
-                risk_assessment=(
-                    risk_assessment
-                ),
-                algorithm_recommendations=(
-                    raw_recommendations
-                ),
-            )
-        )
-
-        recommendation_state = [
-            recommendation.to_dict()
-            for recommendation
-            in self._recommendations
-        ]
-
-        self.world.state.environment[
-            "decision"
-        ] = {
-            "priority": dict(
-                self._priority_state
-            ),
-            "recommendations": (
-                recommendation_state
-            ),
-            "active_interventions": (
-                self.active_interventions
-            ),
-        }
-
-        # --------------------------------------------------------------
-        # Explicit scenario intervention
-        # --------------------------------------------------------------
-
-        intervention_id = (
-            str(self.scenario.intervention.get("intervention_id", self.scenario.intervention.get("id", self.scenario.intervention.get("action"))))
-            if self.scenario.intervention
-            else None
-        )
-
-        if (
-            self.scenario.intervention
-            is not None
-            and intervention_id
-            and not any(str(i.get("intervention_id", i.get("id", i.get("action")))) == intervention_id for i in self._active_interventions)
-        ):
-
-            self._apply_scenario_intervention(
-                self.scenario.intervention
-            )
-
-        self.world.state.record_event(
-            {
-                "type": (
-                    "DECISION_STATE_UPDATED"
-                ),
-                "tick": (
-                    self.clock.current_tick
-                ),
-                "priority": dict(
-                    self._priority_state
-                ),
-                "recommendations": (
-                    recommendation_state
-                ),
-                "active_interventions": (
-                    self.active_interventions
-                ),
-            }
+        self.world.state.simulation_time = (
+            self.clock.simulation_time
         )
 
     # ------------------------------------------------------------------
@@ -4131,313 +2659,4 @@ class SimulationEngine:
                 ) in infrastructure_nodes.items()
             })
 
-    # ------------------------------------------------------------------
-    # Agent movement
-    # ------------------------------------------------------------------
 
-    def _get_movement_speed_multiplier(
-        self,
-    ) -> float:
-        """Return the active mandatory-evacuation movement multiplier."""
-
-        if not self._active_interventions:
-            return 1.0
-        
-        # Take the most recent mandatory_evacuation_order if multiple exist
-        intervention = next((i for i in reversed(self._active_interventions) if str(i.get("intervention_id", i.get("id", i.get("action", "")))) == "mandatory_evacuation_order"), None)
-        if not intervention:
-            return 1.0
-
-        intervention_id = str(
-            intervention.get(
-                "intervention_id",
-                intervention.get(
-                    "id",
-                    intervention.get(
-                        "action",
-                        "",
-                    ),
-                ),
-            )
-        )
-
-        if intervention_id != "mandatory_evacuation_order":
-            return 1.0
-
-        effect = intervention.get(
-            "expected_effects",
-            intervention.get(
-                "effect",
-                {},
-            ),
-        )
-
-        if not isinstance(effect, Mapping):
-            return 1.0
-
-        try:
-            return max(
-                1.0,
-                float(
-                    effect.get(
-                        "movement_speed_multiplier",
-                        1.0,
-                    )
-                ),
-            )
-        except (TypeError, ValueError):
-            return 1.0
-
-    def _update_agents(
-        self,
-        delta_time: float,
-    ) -> None:
-
-        if self._agent_manager is None:
-            return
-
-        safe_centers = [
-            entity
-            for entity in (
-                self.world.state
-                .get_entities()
-            )
-            if isinstance(
-                entity,
-                Facility,
-            )
-            and entity.is_safe_center
-            and entity.is_operational
-            and entity.available_capacity > 0
-        ]
-
-        movement_speed_multiplier = self._get_movement_speed_multiplier()
-
-        panic_behaviors = []
-
-        if movement_speed_multiplier != 1.0:
-            for agent in self._agent_manager.get_panicked_agents():
-                behavior = agent.panic_behavior
-                original_speed = behavior.speed
-                behavior.speed = (
-                    original_speed
-                    * movement_speed_multiplier
-                )
-                panic_behaviors.append(
-                    (
-                        behavior,
-                        original_speed,
-                    )
-                )
-
-        try:
-            self._agent_manager.update_all(
-                delta_time=delta_time,
-                safe_centers=safe_centers,
-                zone_mapping=(
-                    self._load_agent_zone_mapping()
-                ),
-            )
-        finally:
-            for behavior, original_speed in panic_behaviors:
-                behavior.speed = original_speed
-
-    # ------------------------------------------------------------------
-    # World synchronization
-    # ------------------------------------------------------------------
-
-    def _sync_world_time(
-        self,
-    ) -> None:
-
-        self.world.state.current_tick = (
-            self.clock.current_tick
-        )
-
-        self.world.state.simulation_time = (
-            self.clock.simulation_time
-        )
-
-    # ------------------------------------------------------------------
-    # Metrics
-    # ------------------------------------------------------------------
-
-    def _update_basic_metrics(
-        self,
-    ) -> None:
-
-        if self._agent_manager is None:
-            return
-
-        agents = (
-            self._agent_manager
-            .get_agents()
-        )
-
-        self.world.state.update_metric(
-            "agent_count",
-            float(
-                len(agents)
-            ),
-        )
-
-        self.world.state.update_metric(
-            "normal_agents",
-            float(
-                len(
-                    self._agent_manager
-                    .get_normal_agents()
-                )
-            ),
-        )
-
-        self.world.state.update_metric(
-            "panicked_agents",
-            float(
-                len(
-                    self._agent_manager
-                    .get_panicked_agents()
-                )
-            ),
-        )
-
-        self.world.state.update_metric(
-            "safe_agents",
-            float(
-                len(
-                    self._agent_manager
-                    .get_safe_agents()
-                )
-            ),
-        )
-
-        agent_zone_population = (
-            self._agent_manager
-            .get_zone_population()
-        )
-
-        self.world.state.environment[
-            "agent_zone_population"
-        ] = dict(
-            agent_zone_population
-        )
-
-        self.world.state.update_metric(
-            "agent_modeled_population",
-            float(
-                sum(
-                    agent_zone_population.values()
-                )
-            ),
-        )
-
-        active_population = (
-            self.world.state.environment.get(
-                "active_zone_population",
-                {},
-            )
-        )
-
-        if isinstance(
-            active_population,
-            Mapping,
-        ):
-            self.world.state.update_metric(
-                "active_population",
-                float(
-                    sum(
-                        float(value)
-                        for value
-                        in active_population.values()
-                    )
-                ),
-            )
-
-        shelter_occupancy = (
-            self.world.state.environment.get(
-                "shelter_occupancy",
-                {},
-            )
-        )
-
-        if isinstance(
-            shelter_occupancy,
-            Mapping,
-        ):
-            self.world.state.update_metric(
-                "shelter_occupancy",
-                float(
-                    sum(
-                        float(value)
-                        for value
-                        in shelter_occupancy.values()
-                    )
-                ),
-            )
-
-        if self._panic_state:
-
-            self.world.state.update_metric(
-                "max_panic",
-                float(
-                    max(
-                        self._panic_state.values()
-                    )
-                ),
-            )
-
-        if self._casualty_state:
-
-            self.world.state.update_metric(
-                "total_fatalities",
-                float(
-                    self._casualty_state.get(
-                        "total_fatalities",
-                        0,
-                    )
-                ),
-            )
-
-            self.world.state.update_metric(
-                "total_injuries",
-                float(
-                    self._casualty_state.get(
-                        "total_injuries",
-                        0,
-                    )
-                ),
-            )
-
-        if self._risk_assessment is not None:
-
-            self.world.state.update_metric(
-                "composite_risk_score",
-                float(
-                    self._risk_assessment
-                    .composite_risk_score
-                ),
-            )
-
-        if self._priority_state:
-
-            priority = (
-                self._priority_state.get(
-                    "overall_priority"
-                )
-            )
-
-            priority_scores = {
-                "LOW": 1.0,
-                "MEDIUM": 2.0,
-                "HIGH": 3.0,
-                "CRITICAL": 4.0,
-            }
-
-            if priority in priority_scores:
-
-                self.world.state.update_metric(
-                    "decision_priority",
-                    priority_scores[
-                        priority
-                    ],
-                )
