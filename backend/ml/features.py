@@ -13,8 +13,10 @@ FLOOD_FEATURE_COLUMNS = [
     "severity",
     "day",
     "intervention",
+    "drainage_capacity",
     "drainage_weakness",
     "infra_vuln",
+    "pipe_surcharge",
 ]
 
 
@@ -25,20 +27,33 @@ def build_flood_feature_row(
     severity: int,
     day: int,
     intervention: float,
-    drainage_weakness: float,
+    drainage_capacity: float | None = None,
+    drainage_weakness: float | None = None,
     infra_vuln: float,
+    pipe_surcharge: float = 0.0,
 ) -> dict[str, Any]:
     """
     Build one canonical flood feature row in the exact training order.
+    Ensures drainage_capacity and drainage_weakness remain complementary.
     """
+    if drainage_capacity is None and drainage_weakness is not None:
+        drainage_capacity = max(0.0, min(1.0, 1.0 - float(drainage_weakness)))
+    elif drainage_capacity is not None and drainage_weakness is None:
+        drainage_weakness = max(0.0, min(1.0, 1.0 - float(drainage_capacity)))
+    elif drainage_capacity is None and drainage_weakness is None:
+        drainage_capacity = 0.5
+        drainage_weakness = 0.5
+
     return {
         "elevation": float(elevation),
         "flood_exposure": float(flood_exposure),
         "severity": int(severity),
         "day": int(day),
         "intervention": float(intervention),
+        "drainage_capacity": float(drainage_capacity),
         "drainage_weakness": float(drainage_weakness),
         "infra_vuln": float(infra_vuln),
+        "pipe_surcharge": float(pipe_surcharge),
     }
 
 
@@ -81,6 +96,7 @@ def zone_to_flood_features(
     severity: int,
     day: int,
     intervention: float,
+    pipe_surcharge: float = 0.0,
 ) -> dict[str, Any]:
     """
     Convert zone metadata and current flood state into the canonical schema.
@@ -89,8 +105,8 @@ def zone_to_flood_features(
     if elevation is None:
         elevation = zone_data.get("center_normalized", {}).get("y", 0.5)
 
-    drainage_capacity = zone_data.get("drainage_capacity", zone_data.get("drainage_rate", 0.5))
-    infra_vuln = zone_data.get("infra_vuln", zone_data.get("infrastructure_vulnerability", 0.5))
+    drainage_capacity = float(zone_data.get("drainage_capacity", zone_data.get("drainage_rate", 0.5)))
+    infra_vuln = float(zone_data.get("infra_vuln", zone_data.get("infrastructure_vulnerability", 0.5)))
 
     return build_flood_feature_row(
         elevation=elevation,
@@ -98,6 +114,8 @@ def zone_to_flood_features(
         severity=severity,
         day=day,
         intervention=intervention,
-        drainage_weakness=1.0 - float(drainage_capacity),
-        infra_vuln=float(infra_vuln),
+        drainage_capacity=drainage_capacity,
+        drainage_weakness=max(0.0, min(1.0, 1.0 - drainage_capacity)),
+        infra_vuln=infra_vuln,
+        pipe_surcharge=float(pipe_surcharge),
     )

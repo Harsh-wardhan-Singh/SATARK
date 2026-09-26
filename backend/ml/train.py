@@ -23,15 +23,16 @@ def train_model():
     
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    rf_model = RandomForestRegressor(n_estimators=100, max_depth=12, random_state=42)
+    rf_model = RandomForestRegressor(n_estimators=50, max_depth=12, random_state=42)
     rf_model.fit(X_train, y_train)
-    
+
     preds = rf_model.predict(X_test)
     print(f"Model Trained. MSE: {mean_squared_error(y_test, preds):.5f} | R2: {r2_score(y_test, preds):.4f}")
-    
+
     model_path = os.path.join(SCRIPT_DIR, 'flood_impact_model.joblib')
-    joblib.dump(rf_model, model_path)
-    print(f"Model saved to: {model_path}")
+    joblib.dump(rf_model, model_path, compress=3)
+    size_mb = os.path.getsize(model_path) / (1024 * 1024)
+    print(f"Model saved to: {model_path} ({size_mb:.2f} MB)")
 
 if __name__ == "__main__":
     train_model()

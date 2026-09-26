@@ -28,40 +28,56 @@ def generate_dataset(zones, samples=10000):
         
         # Explicit inputs matching train.py
         elevation = zone['elevation'] # 0.0 to 1.0
-        flood_exposure = 1.0 - elevation
+        flood_exposure = float(np.clip(1.0 - elevation + random.uniform(-0.1, 0.2), 0.0, 1.0))
         severity = random.choice([1, 2, 3]) # 1, 2, 3
         day = random.randint(1, 7) # 1 to 7
         intervention = random.uniform(0.0, 1.0)
-        drainage_weakness = random.uniform(0.0, 1.0)
+        drainage_capacity = random.uniform(0.1, 0.9)
+        drainage_weakness = 1.0 - drainage_capacity
         infra_vuln = random.uniform(0.0, 1.0)
-        
+
+        # Pipe surcharge occurs when surface water exceeds conveyance capacity
+        surcharge_risk = max(0.0, flood_exposure - drainage_capacity)
+        pipe_surcharge = float(
+            np.clip(
+                (surcharge_risk * 1.4 + random.uniform(0.0, 0.1))
+                if surcharge_risk > 0.05
+                else 0.0,
+                0.0,
+                1.0,
+            )
+        )
+
         # Fully aligned impact equation (0.0 to 1.0 range)
         sev_norm = severity / 3.0
         day_norm = day / 7.0
-        
+
         raw_impact = (
-            (0.30 * flood_exposure) +
-            (0.25 * sev_norm) +
+            (0.25 * flood_exposure) +
+            (0.20 * sev_norm) +
             (0.15 * drainage_weakness) +
+            (0.15 * pipe_surcharge) +
             (0.15 * infra_vuln) +
             (0.10 * day_norm) -
             (0.25 * intervention) # Strong intervention reduces impact directly
         )
-        
+
         # Add slight noise and clamp strictly to [0.0, 1.0]
         noise = np.random.normal(0, 0.02)
         final_impact = float(np.clip(raw_impact + noise, 0.0, 1.0))
-        
+
         data.append({
             'zone_id': zone_id,
-            'elevation': elevation,
-            'flood_exposure': flood_exposure,
+            'elevation': round(elevation, 4),
+            'flood_exposure': round(flood_exposure, 4),
             'severity': severity,
             'day': day,
-            'intervention': intervention,
-            'drainage_weakness': drainage_weakness,
-            'infra_vuln': infra_vuln,
-            'impact_score': round(final_impact, 4)
+            'intervention': round(intervention, 4),
+            'drainage_capacity': round(drainage_capacity, 4),
+            'drainage_weakness': round(drainage_weakness, 4),
+            'infra_vuln': round(infra_vuln, 4),
+            'pipe_surcharge': round(pipe_surcharge, 4),
+            'impact_score': round(final_impact, 4),
         })
         
     df = pd.DataFrame(data)

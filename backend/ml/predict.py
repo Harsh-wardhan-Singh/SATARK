@@ -10,33 +10,56 @@ Canonical feature schema is defined in ml.features.
 from __future__ import annotations
 
 import os
+import sys
+import warnings
 from typing import Any, Mapping, Sequence
 
 import joblib
 import numpy as np
-import pandas as pd
-import numpy as np
-import os
-import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from ml.features import FLOOD_FEATURE_COLUMNS, normalize_flood_feature_dict, normalize_flood_feature_frame
+from ml.features import (
+    FLOOD_FEATURE_COLUMNS,
+    normalize_flood_feature_dict,
+    normalize_flood_feature_frame,
+)
 
-MODEL_PATH = os.path.join(PROJECT_ROOT, 'ml', 'flood_impact_model.joblib')
+MODEL_PATH = os.path.join(PROJECT_ROOT, "ml", "flood_impact_model.joblib")
+
+_MODEL_CACHE: dict[str, Any] = {}
+
+
+def get_cached_model(model_path: str = MODEL_PATH) -> Any:
+    """
+    Load model once from disk and cache in memory for the process lifetime.
+    Eliminates redundant disk I/O on initialization and counterfactual optimization passes.
+    """
+    if model_path not in _MODEL_CACHE:
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(
+                f"Flood impact model not found at {model_path}. Run ml/train.py first."
+            )
+        _MODEL_CACHE[model_path] = joblib.load(model_path)
+    return _MODEL_CACHE[model_path]
+
+
+def clear_model_cache() -> None:
+    """Clear cached model instances (useful for testing or after retraining)."""
+    _MODEL_CACHE.clear()
+
 
 class FloodImpactPredictor:
     """
     Runtime wrapper around the trained flood-impact model.
 
     Responsibilities:
-        - load the trained model
+        - load the trained model (via process singleton cache)
         - validate the feature schema
-        - perform single predictions
-        - perform batch predictions
+        - perform vectorized NumPy predictions
         - clamp predictions to [0, 1]
 
     This class does not:
@@ -50,26 +73,40 @@ class FloodImpactPredictor:
     def __init__(
         self,
         model_path: str = MODEL_PATH,
+        model: Any = None,
+        use_cache: bool = True,
     ) -> None:
-
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(
-                "Flood impact model not found at "
-                f"{model_path}. "
-                "Run ml/train.py first."
-            )
-
         self.model_path = model_path
-
-        self.model = joblib.load(
-            model_path
-        )
-
-
+        if model is not None:
+            self.model = model
+        elif use_cache:
+            self.model = get_cached_model(model_path)
+        else:
+            if not os.path.exists(model_path):
+                raise FileNotFoundError(
+                    f"Flood impact model not found at {model_path}. Run ml/train.py first."
+                )
+            self.model = joblib.load(model_path)
 
     # ------------------------------------------------------------------
     # Public prediction API
     # ------------------------------------------------------------------
+
+    def predict_features_matrix(self, X: np.ndarray) -> np.ndarray:
+        """
+        Fast vectorized inference directly on a 2D NumPy array of shape (N, len(FLOOD_FEATURE_COLUMNS)).
+        Avoids all DataFrame creation, dictionary conversions, and re-validations.
+        """
+        if X.ndim != 2 or X.shape[1] != len(FLOOD_FEATURE_COLUMNS):
+            raise ValueError(
+                f"Expected feature matrix of shape (N, {len(FLOOD_FEATURE_COLUMNS)}), got {X.shape}"
+            )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            predictions = self.model.predict(X)
+
+        return np.clip(predictions, 0.0, 1.0)
 
     def predict_impact(
         self,
@@ -77,50 +114,52 @@ class FloodImpactPredictor:
     ) -> float:
         """
         Predict flood impact for one zone.
-
-        Expected features:
-
-            elevation
-            flood_exposure
-            severity
-            day
-            intervention
-            drainage_weakness
-            infra_vuln
-
-        Returns:
-            Float impact score in [0, 1].
         """
-        # Validate and enforce the canonical flood schema
-        df = normalize_flood_feature_frame(pd.DataFrame([normalize_flood_feature_dict(features_dict)]))
-        
-        # Predict and clamp between 0.0 and 1.0
-        prediction = self.model.predict(df)[0]
-        return float(np.clip(prediction, 0.0, 1.0))
-        
-    def batch_predict(self, zones_feature_list):
+        normalized = normalize_flood_feature_dict(features_dict)
+        X = np.empty((1, len(FLOOD_FEATURE_COLUMNS)), dtype=np.float64)
+        for j, col in enumerate(FLOOD_FEATURE_COLUMNS):
+            X[0, j] = float(normalized[col])
+
+        return float(self.predict_features_matrix(X)[0])
+
+    def batch_predict(
+        self,
+        zones_feature_list: Sequence[Mapping[str, Any]],
+    ) -> list[float]:
         """
-        Takes a list of dictionaries for simulation efficiency (predicting all zones at once).
+        Takes a sequence of feature dictionaries for batch prediction.
+        Populates a pre-allocated 2D NumPy array directly without intermediate DataFrames.
         """
-        normalized_rows = [normalize_flood_feature_dict(row) for row in zones_feature_list]
-        df = normalize_flood_feature_frame(pd.DataFrame(normalized_rows))
-        predictions = self.model.predict(df)
-        return np.clip(predictions, 0.0, 1.0).tolist()
+        if not zones_feature_list:
+            return []
+
+        n_rows = len(zones_feature_list)
+        n_cols = len(FLOOD_FEATURE_COLUMNS)
+        X = np.empty((n_rows, n_cols), dtype=np.float64)
+
+        for i, row in enumerate(zones_feature_list):
+            normalized = normalize_flood_feature_dict(row)
+            for j, col in enumerate(FLOOD_FEATURE_COLUMNS):
+                X[i, j] = float(normalized[col])
+
+        predictions = self.predict_features_matrix(X)
+        return predictions.tolist()
+
 
 if __name__ == "__main__":
-    # Standalone test logic
     predictor = FloodImpactPredictor()
-    
-    # Mocking a severe flood in a dense area with low intervention
+
     test_zone = {
-        'elevation': 0.2,
-        'flood_exposure': 0.85,
-        'severity': 3,
-        'day': 5,
-        'intervention': 0.10,
-        'drainage_weakness': 0.75,
-        'infra_vuln': 0.60,
+        "elevation": 0.2,
+        "flood_exposure": 0.85,
+        "severity": 3,
+        "day": 5,
+        "intervention": 0.10,
+        "drainage_capacity": 0.25,
+        "drainage_weakness": 0.75,
+        "infra_vuln": 0.60,
+        "pipe_surcharge": 0.50,
     }
-    
+
     score = predictor.predict_impact(test_zone)
     print(f"Test Predicted Impact Score: {score:.3f}")

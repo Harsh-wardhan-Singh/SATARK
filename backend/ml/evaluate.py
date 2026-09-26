@@ -32,16 +32,16 @@ def evaluate():
     print("--- EDGE CASE SIMULATIONS ---")
     edge_cases = [
         {
-            "name": "1. Doomsday (Lowest elev, Max severity, Day 7, NO intervention, High vulnerability)",
-            "features": [0.0, 1.0, 3, 7, 0.0, 1.0, 1.0]
+            "name": "1. Doomsday (Lowest elev, Max severity, Day 7, NO intervention, Max surcharge, High vulnerability)",
+            "features": [0.0, 1.0, 3, 7, 0.0, 0.0, 1.0, 1.0, 1.0]
         },
         {
-            "name": "2. Absolute Safety (Highest elev, Min severity, Day 1, MAX intervention, Perfect drainage)",
-            "features": [1.0, 0.0, 1, 1, 1.0, 0.0, 0.0]
+            "name": "2. Absolute Safety (Highest elev, Min severity, Day 1, MAX intervention, Perfect drainage, Zero surcharge)",
+            "features": [1.0, 0.0, 1, 1, 1.0, 1.0, 0.0, 0.0, 0.0]
         },
         {
-            "name": "3. Rescue Mitigation (Low elev, Max severity, Day 4, MAX intervention, Med vulnerability)",
-            "features": [0.2, 0.8, 3, 4, 1.0, 0.5, 0.5]
+            "name": "3. Rescue Mitigation (Low elev, Max severity, Day 4, MAX intervention, Med vulnerability, Low surcharge)",
+            "features": [0.2, 0.8, 3, 4, 1.0, 0.5, 0.5, 0.5, 0.3]
         }
     ]
     

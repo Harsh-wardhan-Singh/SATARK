@@ -31,6 +31,7 @@ class FloodImpactStep(SimulationStep):
             severity=context.scenario.severity,
             day=day,
             intervention_level=context.scenario.intervention_level,
+            drainage_state=context.drainage_state,
         )
 
         context.flood_impact_scores = dict(impact_scores)
