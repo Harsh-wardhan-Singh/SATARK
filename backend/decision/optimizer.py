@@ -53,6 +53,12 @@ class SimulationEvaluation:
 
     congestion: float = 0.0
 
+    total_surcharge_m3: float = 0.0
+
+    peak_water_depth_cm: float = 0.0
+
+    critical_zones_count: int = 0
+
     additional_data: Mapping[
         str,
         Any,
@@ -84,6 +90,15 @@ class SimulationEvaluation:
             ),
             "congestion": float(
                 self.congestion
+            ),
+            "total_surcharge_m3": float(
+                self.total_surcharge_m3
+            ),
+            "peak_water_depth_cm": float(
+                self.peak_water_depth_cm
+            ),
+            "critical_zones_count": int(
+                self.critical_zones_count
             ),
             "additional_data": dict(
                 self.additional_data
@@ -118,7 +133,9 @@ class OptimizationCandidateResult:
 
     congestion_improvement: float
 
-    rationale: str
+    surcharge_reduction: float = 0.0
+
+    rationale: str = ""
 
     def to_dict(
         self,
@@ -151,6 +168,9 @@ class OptimizationCandidateResult:
             ),
             "congestion_improvement": float(
                 self.congestion_improvement
+            ),
+            "surcharge_reduction": float(
+                self.surcharge_reduction
             ),
             "rationale": self.rationale,
         }
@@ -420,15 +440,26 @@ class OptimizationEngine:
             - intervention_result.congestion
         )
 
+        surcharge_diff = max(
+            0.0,
+            baseline.total_surcharge_m3 - intervention_result.total_surcharge_m3,
+        )
+        surcharge_reduction = (
+            surcharge_diff / max(1.0, baseline.total_surcharge_m3)
+            if baseline.total_surcharge_m3 > 0.0
+            else 0.0
+        )
+
         # --------------------------------------------------------------
-        # Weighted optimization objective
+        # Weighted optimization objective incorporating surcharge reduction
         # --------------------------------------------------------------
 
         improvement_score = (
-            risk_reduction * 0.50
-            + casualty_reduction * 0.25
+            risk_reduction * 0.40
+            + casualty_reduction * 0.20
             + infrastructure_improvement * 0.15
             + congestion_improvement * 0.10
+            + surcharge_reduction * 0.15
         )
 
         rationale = (
@@ -473,6 +504,9 @@ class OptimizationEngine:
             ),
             congestion_improvement=(
                 congestion_improvement
+            ),
+            surcharge_reduction=(
+                surcharge_reduction
             ),
             rationale=rationale,
         )

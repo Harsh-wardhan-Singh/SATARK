@@ -34,6 +34,11 @@ from api.serializers import (
 _active_engine: SimulationEngine | None = None
 
 
+def reset_active_engine() -> None:
+    global _active_engine
+    _active_engine = None
+
+
 def _require_engine() -> SimulationEngine:
     if _active_engine is None:
         raise RuntimeError(
@@ -540,14 +545,14 @@ class InterventionView(
                 status=status.HTTP_409_CONFLICT,
             )
 
-        return Response(
-            {
-                "intervention": result,
-                "state": _state_payload(
-                    engine
-                ),
-            }
-        )
+        state_payload = _state_payload(engine)
+        resp_data = {
+            "status": "SUCCESS",
+            "intervention": result,
+            "state": state_payload,
+        }
+        resp_data.update(state_payload)
+        return Response(resp_data)
 
 
 class SelectedInterventionView(
@@ -573,13 +578,36 @@ class SelectedInterventionView(
                 status=status.HTTP_409_CONFLICT,
             )
 
+        state_payload = _state_payload(engine)
+        resp_data = {
+            "status": "SUCCESS",
+            "intervention": result,
+            "state": state_payload,
+        }
+        resp_data.update(state_payload)
+        return Response(resp_data)
+
+
+class SimulationTeardownView(
+    APIView
+):
+    """
+    Tears down the active simulation engine and clears it from server memory.
+    """
+
+    def post(
+        self,
+        request,
+        *args,
+        **kwargs,
+    ):
+        reset_active_engine()
         return Response(
             {
-                "intervention": result,
-                "state": _state_payload(
-                    engine
-                ),
-            }
+                "status": "SUCCESS",
+                "detail": "Simulation engine torn down successfully.",
+            },
+            status=status.HTTP_200_OK,
         )
 
 

@@ -13,6 +13,7 @@ from api.views import (
     SimulationRunView,
     SimulationStateView,
     SimulationStepView,
+    SimulationTeardownView,
     NowcastView,
     WorldZonesView,
     WorldSheltersView,
@@ -56,6 +57,11 @@ urlpatterns = [
         "simulation/reset/",
         SimulationResetView.as_view(),
         name="simulation-reset",
+    ),
+    path(
+        "simulation/teardown/",
+        SimulationTeardownView.as_view(),
+        name="simulation-teardown",
     ),
     path(
         "simulation/risk/",

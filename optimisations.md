@@ -516,6 +516,34 @@ flowchart TD
 
 ---
 
+### Phase 5.5: Mid-Flight System Harmonization & Discrepancy Elimination (COMPLETED)
+- **Deliverables**:
+  1. [x] `engine.py` Legacy Purge & Extraction:
+     - Created `backend/simulation/initialization/population.py` (`PopulationInitializer`) delegating human response engines and agent cohort initialization.
+     - Purged dead methods: `apply_recommendation()`, `get_intervention_state()`, `clear_intervention()`.
+     - Streamlined `_apply_scenario_intervention()` directly to `apply_intervention()`.
+     - Streamlined `_calculate_infrastructure_damage()` and `_calculate_congestion()`.
+     - Reduced `engine.py` by ~780 lines.
+  2. [x] Harmonize `OptimizationEngine` with Drainage & Nowcast:
+     - Updated `SimulationEvaluation` with `total_surcharge_m3`, `peak_water_depth_cm`, and `critical_zones_count`.
+     - Updated `OptimizationCandidateResult` with `surcharge_reduction`.
+     - Enhanced `OptimizationEngine._compare_candidate()` to reward pipe surcharge reduction in multi-objective score.
+     - Updated `_provide_simulation_evaluation()` to propagate cached zone mappings in memory.
+  3. [x] API State Isolation & Teardown (LL-8):
+     - Added `reset_active_engine()` and `POST /api/simulation/teardown/` endpoint in `views.py`.
+     - Standardized response envelopes across intervention endpoints and updated `frontend/src/api/simulationApi.ts` (`normalizeWorldSnapshot` unwraps `.state`, `.data`, or raw payloads).
+     - Added `teardownSimulation()` client API.
+  4. [x] Frontend Ghost Asset & Dead JSX Cleanse:
+     - Deleted empty files in `frontend/public/data/` (`dependencies.json`, `disaster_parameters.json`, `historical_events.json`, `raw/`).
+     - Removed lingering non-flood `{activeCalamity?.type !== 'FLOOD'}` check in `LeftPanel.tsx`.
+     - Updated `package.json` lint script to `tsc -b`.
+  5. [x] Unit Tests:
+     - Added `backend/tests/test_drainage_coupling.py` (6/6 passed).
+     - Added `backend/tests/test_optimizer.py` (5/5 passed).
+     - Total test suite expanded to **80/80 passing tests** (100%).
+
+---
+
 ### Phase 6: ML Model Optimization & Vectorized Inference
 - **Deliverables**:
   1. Train a lightweight **LightGBM** regressor (`< 5 MB`) replacing the 36 MB RandomForest.

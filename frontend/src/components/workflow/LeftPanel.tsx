@@ -57,18 +57,6 @@ export const LeftPanel: React.FC = () => {
                 <span className="stat-label">TIME REMAINING</span>
                 <span className="stat-value">{remainingTimeDisplay}</span>
               </div>
-              {activeCalamity?.type !== 'FLOOD' && (
-                  <>
-                      <div className="stat-row">
-                        <span className="stat-label">CASUALTIES</span>
-                        <span className="stat-value">NO DATA</span>
-                      </div>
-                      <div className="stat-row">
-                        <span className="stat-label">PROPERTY DAMAGE</span>
-                        <span className="stat-value">NO DATA</span>
-                      </div>
-                  </>
-              )}
             </div>
             <p className="backend-pending">Waiting for authoritative backend simulation data...</p>
           </div>

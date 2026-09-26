@@ -6,10 +6,11 @@ import { apiClient } from './client';
  * Normalizes a raw world snapshot payload received from the backend.
  * Returns null if the payload fails validation.
  */
-export function normalizeWorldSnapshot(raw: RawWorldSnapshotDTO): WorldSnapshot | null {
-  return validateWorldSnapshot(raw);
+export function normalizeWorldSnapshot(raw: any): WorldSnapshot | null {
+  if (!raw) return null;
+  const payload = (raw && typeof raw === 'object' && ('state' in raw ? raw.state : 'data' in raw ? raw.data : raw)) as RawWorldSnapshotDTO;
+  return validateWorldSnapshot(payload);
 }
-
 
 export interface SimulationInitPayload {
   duration: number;
@@ -18,8 +19,8 @@ export interface SimulationInitPayload {
   parameters: Record<string, any>;
 }
 
-export const startSimulation = async (_calamityType: CalamityType): Promise<void> => {
-  throw new Error('Not implemented: startSimulation. Backend DRF endpoint not yet available.');
+export const teardownSimulation = async (): Promise<void> => {
+  await apiClient.post('/simulation/teardown/');
 };
 
 export const fetchWorldSnapshot = async (_tick?: number): Promise<WorldSnapshot> => {
@@ -80,7 +81,7 @@ export const resetSimulation = async (): Promise<WorldSnapshot> => {
 
 export const applyIntervention = async (intervention_id: string): Promise<WorldSnapshot> => {
   const data = await apiClient.post('/simulation/intervention/', { intervention_id });
-  const snapshot = normalizeWorldSnapshot(data.state);
+  const snapshot = normalizeWorldSnapshot(data);
   if (!snapshot) {
     throw new Error('Received invalid world snapshot from backend');
   }

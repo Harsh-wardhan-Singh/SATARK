@@ -57,6 +57,8 @@ from decision.optimizer import (
     SimulationEvaluation,
 )
 
+from simulation.initialization.population import PopulationInitializer
+
 from simulation.pipeline import (
     SimulationPipeline,
     SimulationStep,
@@ -727,384 +729,46 @@ class SimulationEngine:
     # Human-response initialization
     # ------------------------------------------------------------------
 
-    def _initialize_human_response(
-        self,
-    ) -> None:
-
-        self._panic_engine = None
-
-        self._evacuation_engine = None
-
-        self._crowd_engine = None
-
-        self._casualties_engine = None
-
-        self._panic_state = {}
-
-        self._evacuation_routes = {}
-
-        self._crowd_state = {}
-
-        self._casualty_state = {}
-
-        self._human_response_enabled = False
-
-        self._population_data = (
-            self.scenario.get_initial_state(
-                "population_data"
-            )
+    def _initialize_human_response(self) -> None:
+        infra_data = self._build_casualty_infrastructure_data()
+        res = PopulationInitializer.initialize_human_response(
+            scenario=self.scenario,
+            world=self.world,
+            casualty_infrastructure_data=infra_data,
         )
+        self._human_response_enabled = res["enabled"]
+        self._panic_engine = res["panic_engine"]
+        self._evacuation_engine = res["evacuation_engine"]
+        self._crowd_engine = res["crowd_engine"]
+        self._casualties_engine = res["casualties_engine"]
+        self._panic_state = res["panic_state"]
+        self._evacuation_routes = res["evacuation_routes"]
+        self._crowd_state = res["crowd_state"]
+        self._casualty_state = res["casualty_state"]
+        self._population_data = res["population_data"]
+        self._shelter_data = res["shelter_data"]
 
-        if self._population_data is None and self.scenario.population_path:
-            with open(self.scenario.population_path, 'r', encoding='utf-8') as f:
-                self._population_data = json.load(f)
-
-        self._shelter_data = (
-            self.scenario.get_initial_state(
-                "shelter_data"
-            )
-        )
-
-        if self._shelter_data is None and self.scenario.shelters_path:
-            with open(self.scenario.shelters_path, 'r', encoding='utf-8') as f:
-                self._shelter_data = json.load(f)
-
-        self._panic_threshold = float(
-            self.scenario.get_parameter(
-                "panic_threshold",
-                0.5,
-            )
-        )
-
-        self._population_model_step_seconds = float(
-            self.scenario.get_parameter(
-                "population_model_step_seconds",
-                1.0,
-            )
-        )
-
-        if not 0.0 <= self._panic_threshold <= 1.0:
-            raise ValueError(
-                "panic_threshold must be between 0.0 and 1.0."
-            )
-
-        if self._population_model_step_seconds <= 0:
-            raise ValueError(
-                "population_model_step_seconds "
-                "must be greater than 0."
-            )
-
-        if self._population_data is None:
-
-            self.world.state.environment[
-                "human_response"
-            ] = {
-                "enabled": False,
-                "reason": (
-                    "population_data is not configured "
-                    "in Scenario.initial_state."
-                ),
-                "panic_by_zone": {},
-                "evacuation_routes": {},
-                "crowd": {},
-                "casualties": {},
-            }
-
-            return
-
-        if not isinstance(
-            self._population_data,
-            Mapping,
-        ):
-            raise TypeError(
-                "population_data must be a mapping."
-            )
-
-        if "zones" not in self._population_data:
-            raise ValueError(
-                "population_data must contain 'zones'."
-            )
-
-        self._panic_engine = PanicEngine(
-            self._population_data
-        )
-
-        self._panic_state = dict(
-            self._panic_engine.panic_state
-        )
-
-        if self._shelter_data is None:
-
-            self._human_response_enabled = True
-
-            self.world.state.environment[
-                "human_response"
-            ] = {
-                "enabled": True,
-                "partial": True,
-                "panic_by_zone": dict(
-                    self._panic_state
-                ),
-                "evacuation_routes": {},
-                "crowd": {},
-                "casualties": {},
-            }
-
-            return
-
-        if not isinstance(
-            self._shelter_data,
-            Mapping,
-        ):
-            raise TypeError(
-                "shelter_data must be a mapping."
-            )
-
-        if "shelters" not in self._shelter_data:
-            raise ValueError(
-                "shelter_data must contain 'shelters'."
-            )
-
-        zones_path = (
-            self.scenario.get_parameter(
-                "zones_path"
-            ) or self.scenario.get_parameter(
-                "zone_mapping_path"
-            )
-        )
-
-        shelters_path = (
-            self.scenario.get_parameter(
-                "shelters_path"
-            )
-        )
-
-        if not zones_path or not shelters_path:
-
-            self._human_response_enabled = True
-
-            return
-
-        zones_file = Path(
-            zones_path
-        )
-
-        shelters_file = Path(
-            shelters_path
-        )
-
-        if not zones_file.exists():
-            raise FileNotFoundError(
-                "Evacuation zone file not found: "
-                f"{zones_file}"
-            )
-
-        if not shelters_file.exists():
-            raise FileNotFoundError(
-                "Evacuation shelter file not found: "
-                f"{shelters_file}"
-            )
-
-        self._evacuation_engine = (
-            EvacuationEngine(
-                zones_path=zones_file,
-                shelters_path=shelters_file,
-            )
-        )
-
-        self._crowd_engine = (
-            CrowdDynamicsEngine(
-                population_data=(
-                    self._population_data
-                ),
-                shelter_data=(
-                    self._shelter_data
-                ),
-            )
-        )
-
-        self._casualties_engine = (
-            CasualtiesEngine(
-                self._build_casualty_infrastructure_data()
-            )
-        )
-
-        self._human_response_enabled = True
-
-    # ------------------------------------------------------------------
-    # Population → HumanAgent initialization
-    # ------------------------------------------------------------------
-
-    def _initialize_population_agents(
-        self,
-    ) -> None:
-        """
-        Populate the authoritative WorldState with deterministic
-        representative HumanAgent cohorts.
-        """
+    def _initialize_population_agents(self) -> None:
+        """Populate the authoritative WorldState with deterministic representative HumanAgent cohorts."""
         if self._agent_manager is None:
-            raise RuntimeError(
-                "AgentManager must be initialized before population agents."
-            )
-
-        if self._population_data is None:
-            self.world.state.environment[
-                "population_agents"
-            ] = {
-                "enabled": False,
-                "representative_agent_count": 0,
-                "modeled_population": 0.0,
-                "zone_population": {},
-            }
-            return
-
-        zone_mapping = (
-            self._load_agent_zone_mapping()
+            raise RuntimeError("AgentManager must be initialized before population agents.")
+        mapping = self._load_agent_zone_mapping()
+        PopulationInitializer.populate_representative_agents(
+            scenario=self.scenario,
+            world=self.world,
+            agent_manager=self._agent_manager,
+            population_data=self._population_data,
+            cached_zone_mapping=mapping,
+            clock_tick=self.clock.current_tick,
         )
 
-        representative_count = int(
-            self.scenario.get_parameter(
-                "representative_agent_count",
-                250,
-            )
+    def _load_agent_zone_mapping(self) -> dict[str, dict[str, Any]]:
+        """Load and cache zone mapping using PopulationInitializer."""
+        self._cached_zone_mapping = PopulationInitializer.load_zone_mapping(
+            scenario=self.scenario,
+            cached_zone_mapping=self._cached_zone_mapping,
+            flood_zone_data=self._flood_zone_data,
         )
-
-        agent_speed = float(
-            self.scenario.get_parameter(
-                "agent_speed",
-                1.0,
-            )
-        )
-
-        agents = (
-            self._agent_manager
-            .build_population_agents(
-                population_data=(
-                    self._population_data
-                ),
-                zone_mapping=zone_mapping,
-                representative_agent_count=(
-                    representative_count
-                ),
-                default_speed=agent_speed,
-            )
-        )
-
-        self._agent_manager.add_agents(
-            agents
-        )
-
-        zone_population = (
-            self._agent_manager
-            .get_zone_population()
-        )
-
-        modeled_population = sum(
-            zone_population.values()
-        )
-
-        self.world.state.environment[
-            "population_agents"
-        ] = {
-            "enabled": True,
-            "representative_agent_count": (
-                len(agents)
-            ),
-            "modeled_population": (
-                modeled_population
-            ),
-            "zone_population": dict(
-                zone_population
-            ),
-            "representation": (
-                "representative_cohorts"
-            ),
-        }
-
-        self.world.state.update_metric(
-            "representative_agent_count",
-            float(len(agents)),
-        )
-
-        self.world.state.update_metric(
-            "modeled_population",
-            float(modeled_population),
-        )
-
-        self.world.state.record_event(
-            {
-                "type": (
-                    "POPULATION_AGENTS_INITIALIZED"
-                ),
-                "tick": (
-                    self.clock.current_tick
-                ),
-                "representative_agent_count": (
-                    len(agents)
-                ),
-                "modeled_population": (
-                    modeled_population
-                ),
-            }
-        )
-
-    def _load_agent_zone_mapping(
-        self,
-    ) -> dict[
-        str,
-        dict[str, Any],
-    ]:
-        """
-        Load the same zone mapping used by the simulation algorithms.
-        Caches mapping in memory after first load to eliminate disk I/O.
-        """
-        if self._cached_zone_mapping is not None:
-            return self._cached_zone_mapping
-
-        mapping_path = (
-            self.scenario.zone_mapping_path
-        )
-
-        if mapping_path:
-            path = Path(mapping_path)
-        elif self._flood_zone_data:
-            self._cached_zone_mapping = {
-                str(zone_id): dict(zone)
-                for zone_id, zone
-                in self._flood_zone_data.items()
-            }
-            return self._cached_zone_mapping
-        else:
-            raise ValueError(
-                "A zone_mapping_path is required for "
-                "population-agent initialization."
-            )
-
-        if not path.exists():
-            raise FileNotFoundError(
-                "Agent zone mapping file not found: "
-                f"{path}"
-            )
-
-        with path.open(
-            "r",
-            encoding="utf-8",
-        ) as handle:
-            data = json.load(handle)
-
-        zones = data.get("zones")
-
-        if not isinstance(zones, list):
-            raise ValueError(
-                "Zone mapping must contain a 'zones' list."
-            )
-
-        self._cached_zone_mapping = {
-            str(zone["id"]): dict(zone)
-            for zone in zones
-            if isinstance(zone, Mapping)
-            and "id" in zone
-        }
         return self._cached_zone_mapping
 
     # ------------------------------------------------------------------
@@ -1514,29 +1178,6 @@ class SimulationEngine:
             selected
         )
 
-    def apply_recommendation(
-        self,
-        recommendation: Recommendation,
-    ) -> dict[str, Any]:
-        """
-        Apply a structured Recommendation produced by the decision layer.
-
-        Recommendation remains a decision-layer object; the simulation
-        engine extracts its Intervention contract and executes it through
-        the existing intervention algorithm.
-        """
-
-        if not isinstance(
-            recommendation,
-            Recommendation,
-        ):
-            raise TypeError(
-                "recommendation must be a Recommendation."
-            )
-
-        return self.apply_intervention(
-            recommendation.intervention
-        )
 
     @staticmethod
     def _normalize_intervention(
@@ -1657,92 +1298,6 @@ class SimulationEngine:
             }
         )
 
-    def get_intervention_state(
-        self,
-    ) -> dict[str, Any] | None:
-        """
-        Return the authoritative live intervention state.
-
-        This is intentionally read-only from the caller's perspective.
-        """
-
-        intervention_state = (
-            self.world.state.environment.get(
-                "intervention"
-            )
-        )
-
-        if not isinstance(
-            intervention_state,
-            Mapping,
-        ):
-            return None
-
-        return dict(
-            intervention_state
-        )
-
-    def clear_intervention(
-        self,
-    ) -> None:
-        """
-        Clear the intervention marker from the live Digital Twin.
-
-        This does NOT attempt to reverse mechanical changes already made
-        by the intervention algorithm.
-
-        A reversal would require an explicit compensating intervention
-        contract and must not be inferred or fabricated.
-        """
-
-        if not self._active_interventions:
-            return
-
-        previous = dict(self._active_interventions[-1]) if self._active_interventions else None
-
-        self._active_interventions = []
-        
-
-        self.world.state.environment[
-            "intervention"
-        ] = {
-            "status": "CLEARED",
-            "applied": False,
-            "cleared_tick": (
-                self.clock.current_tick
-            ),
-            "cleared_simulation_time": (
-                self.clock.simulation_time
-            ),
-            "previous_action": previous,
-        }
-
-        self.world.state.environment[
-            "decision"
-        ] = {
-            "priority": dict(
-                self._priority_state
-            ),
-            "recommendations": [
-                recommendation.to_dict()
-                for recommendation
-                in self._recommendations
-            ],
-            "active_interventions": [],
-        }
-
-        self.world.state.record_event(
-            {
-                "type": "INTERVENTION_CLEARED",
-                "tick": (
-                    self.clock.current_tick
-                ),
-                "simulation_time": (
-                    self.clock.simulation_time
-                ),
-                "previous_intervention": previous,
-            }
-        )
 
     # ------------------------------------------------------------------
     # Phase 13 — Baseline vs intervention optimization
@@ -1864,6 +1419,8 @@ class SimulationEngine:
             scenario=evaluation_scenario,
             entities=self._clone_initial_entities(),
         )
+        if self._cached_zone_mapping:
+            evaluation_engine._cached_zone_mapping = dict(self._cached_zone_mapping)
 
         evaluation_engine.initialize()
 
@@ -2033,6 +1590,14 @@ class SimulationEngine:
             "active_interventions": [dict(i) for i in self._active_interventions],
         }
 
+        drainage_state = self.world.state.environment.get("drainage", {})
+        total_surcharge_m3 = float(drainage_state.get("total_surcharge_volume_m3", 0.0))
+
+        water_levels = self.world.state.environment.get("flood_water_levels", {})
+        peak_depth_m = max(water_levels.values()) if water_levels else 0.0
+        peak_depth_cm = round(peak_depth_m * 100.0, 2)
+        critical_zones = sum(1 for d in water_levels.values() if d >= 0.30)
+
         return SimulationEvaluation(
             metrics=metrics,
             final_risk_score=final_risk_score,
@@ -2041,122 +1606,30 @@ class SimulationEngine:
                 infrastructure_damage
             ),
             congestion=congestion,
+            total_surcharge_m3=total_surcharge_m3,
+            peak_water_depth_cm=peak_depth_cm,
+            critical_zones_count=critical_zones,
             additional_data=additional_data,
         )
 
-    def _calculate_infrastructure_damage(
-        self,
-    ) -> float:
-        """
-        Calculate normalized final infrastructure damage.
-
-        0.0 = no measured capacity loss.
-        1.0 = complete normalized capacity loss.
-        """
-
+    def _calculate_infrastructure_damage(self) -> float:
+        """Calculate normalized final infrastructure damage (0.0 to 1.0)."""
         if not self._infrastructure_state:
             return 0.0
+        capacities = [
+            max(0.0, min(1.0, float(n.get("capacity", 1.0))))
+            for n in self._infrastructure_state.values()
+            if isinstance(n, Mapping)
+        ]
+        return max(0.0, min(1.0, 1.0 - (sum(capacities) / len(capacities)))) if capacities else 0.0
 
-        capacities: list[float] = []
-
-        for node_state in (
-            self._infrastructure_state.values()
-        ):
-            try:
-                capacity = float(
-                    node_state.get(
-                        "capacity",
-                        1.0,
-                    )
-                )
-            except (
-                TypeError,
-                ValueError,
-            ):
-                continue
-
-            capacities.append(
-                max(
-                    0.0,
-                    min(
-                        1.0,
-                        capacity,
-                    ),
-                )
-            )
-
-        if not capacities:
+    def _calculate_congestion(self) -> float:
+        """Calculate normalized final congestion from crowd bottleneck state."""
+        bottlenecks = self.world.state.environment.get("bottlenecks", {})
+        if not isinstance(bottlenecks, Mapping) or not bottlenecks:
             return 0.0
-
-        average_capacity = (
-            sum(capacities)
-            / len(capacities)
-        )
-
-        return max(
-            0.0,
-            min(
-                1.0,
-                1.0
-                - average_capacity,
-            ),
-        )
-
-    def _calculate_congestion(
-        self,
-    ) -> float:
-        """
-        Calculate normalized final congestion from authoritative crowd
-        bottleneck state.
-
-        If bottleneck values are already ratios, they are used directly.
-        """
-
-        bottlenecks = (
-            self.world.state.environment.get(
-                "bottlenecks",
-                {},
-            )
-        )
-
-        if not isinstance(
-            bottlenecks,
-            Mapping,
-        ):
-            return 0.0
-
-        values: list[float] = []
-
-        for value in (
-            bottlenecks.values()
-        ):
-            try:
-                numeric_value = float(
-                    value
-                )
-            except (
-                TypeError,
-                ValueError,
-            ):
-                continue
-
-            values.append(
-                max(
-                    0.0,
-                    numeric_value,
-                )
-            )
-
-        if not values:
-            return 0.0
-
-        return max(
-            0.0,
-            min(
-                1.0,
-                max(values),
-            ),
-        )
+        values = [max(0.0, float(v)) for v in bottlenecks.values() if isinstance(v, (int, float))]
+        return max(0.0, min(1.0, max(values))) if values else 0.0
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -2337,326 +1810,83 @@ class SimulationEngine:
 
     def _apply_scenario_intervention(
         self,
-        intervention: Mapping[
-            str,
-            Any,
-        ],
+        intervention: Mapping[str, Any],
     ) -> None:
-        """
-        Apply an explicitly supplied Scenario intervention.
+        """Apply an explicitly supplied Scenario intervention using the authoritative pipeline."""
+        if not isinstance(intervention, Mapping):
+            raise TypeError("Scenario.intervention must be a mapping.")
+        self.apply_intervention(intervention)
 
-        The existing algorithm implementation performs the mechanical
-        mutation.
-
-        SimulationEngine remains responsible for updating the
-        authoritative WorldState around that operation.
-        """
-
-        if not isinstance(
-            intervention,
-            Mapping,
-        ):
-            raise TypeError(
-                "Scenario.intervention must be a mapping."
-            )
-
-        intervention_id = (
-            intervention.get(
-                "intervention_id"
-            )
-            or intervention.get(
-                "id"
-            )
-            or intervention.get(
-                "action"
-            )
-        )
-
-        if not intervention_id:
-            raise ValueError(
-                "Scenario intervention must contain "
-                "intervention_id, id, or action."
-            )
-
-        environment = (
-            self._build_intervention_environment()
-        )
-
-        updated_environment = (
-            self._algorithm_recommendation_engine
-            .apply_intervention(
-                str(
-                    intervention_id
-                ),
-                environment,
-            )
-        )
-
-        self._merge_intervention_environment(
-            updated_environment
-        )
-
-        intervention_to_add = dict(intervention)
-        intervention_to_add["intervention_id"] = str(intervention_id)
-        self._active_interventions.append(intervention_to_add)
-
-        
-
-        self.world.state.environment[
-            "decision"
-        ] = {
-            "priority": dict(
-                self._priority_state
-            ),
-            "recommendations": [
-                recommendation.to_dict()
-                for recommendation
-                in self._recommendations
-            ],
-            "active_interventions": self.active_interventions,
-        }
-
-        self.world.state.record_event(
-            {
-                "type": (
-                    "INTERVENTION_APPLIED"
-                ),
-                "tick": (
-                    self.clock.current_tick
-                ),
-                "interventions": self.active_interventions,
-            }
-        )
-
-    def _build_intervention_environment(
-        self,
-    ) -> dict[
-        str,
-        Any,
-    ]:
-        """
-        Build the environment contract expected by the existing
-        intervention algorithm.
-
-        This is an adapter only.
-
-        No intervention mathematics is implemented here.
-        """
-
+    def _build_intervention_environment(self) -> dict[str, Any]:
+        """Build the environment contract expected by the existing intervention algorithm."""
         zones = {}
-
-        flood_zones = (
-            self.world.state.environment.get(
-                "flood_water_levels",
-                {},
-            )
-        )
-
-        if isinstance(
-            flood_zones,
-            Mapping,
-        ):
-
-            for (
-                zone_id,
-                water_level,
-            ) in flood_zones.items():
-
+        flood_zones = self.world.state.environment.get("flood_water_levels", {})
+        if isinstance(flood_zones, Mapping):
+            for zone_id, water_level in flood_zones.items():
                 drainage_rate = 0.0
-
-                if (
-                    self._flood is not None
-                    and self._flood.propagator is not None
-                ):
-                    zone_state = (
-                        self._flood.propagator.state.get(
-                            zone_id,
-                            {},
-                        )
-                    )
+                if self._flood is not None and self._flood.propagator is not None:
+                    zone_state = self._flood.propagator.state.get(zone_id, {})
                     if isinstance(zone_state, Mapping):
-                        drainage_rate = float(
-                            zone_state.get(
-                                "drainage_capacity",
-                                0.0,
-                            )
-                        )
-
-                zones[
-                    str(
-                        zone_id
-                    )
-                ] = {
-                    "water_level": float(
-                        water_level
-                    ),
-                    "drainage_rate": max(
-                        0.0,
-                        drainage_rate,
-                    ),
+                        drainage_rate = float(zone_state.get("drainage_capacity", 0.0))
+                zones[str(zone_id)] = {
+                    "water_level": float(water_level),
+                    "drainage_rate": max(0.0, drainage_rate),
                 }
 
         transit_capacities = {}
-
         if self._crowd_engine is not None:
             transit_capacities = {
                 str(zone_id): float(capacity)
-                for zone_id, capacity
-                in self._crowd_engine.transit_capacities.items()
+                for zone_id, capacity in self._crowd_engine.transit_capacities.items()
             }
 
         infrastructure_nodes = {}
-
-        for (
-            node_id,
-            node_state,
-        ) in (
-            self._infrastructure_state.items()
-        ):
-
-            infrastructure_nodes[
-                str(
-                    node_id
-                )
-            ] = {
-                "capacity": float(
-                    node_state.get(
-                        "capacity",
-                        1.0,
-                    )
-                ),
+        for node_id, node_state in self._infrastructure_state.items():
+            infrastructure_nodes[str(node_id)] = {
+                "capacity": float(node_state.get("capacity", 1.0)),
                 "backup_power": float(
-                    self._infrastructure_network.nodes
-                    .get(
-                        node_id,
-                        {},
-                    )
-                    .get(
-                        "backup_power",
-                        0.0,
-                    )
+                    self._infrastructure_network.nodes.get(node_id, {}).get("backup_power", 0.0)
+                    if self._infrastructure_network else 0.0
                 ),
-                "zone_id": node_state.get(
-                    "zone_id"
-                ),
-                "type": node_state.get(
-                    "type",
-                    "UNKNOWN",
-                ),
+                "zone_id": node_state.get("zone_id"),
+                "type": node_state.get("type", "UNKNOWN"),
             }
 
         return {
             "zones": zones,
-            "transit_capacities": (
-                transit_capacities
-            ),
-            "infrastructure_nodes": (
-                infrastructure_nodes
-            ),
+            "transit_capacities": transit_capacities,
+            "infrastructure_nodes": infrastructure_nodes,
         }
 
     def _merge_intervention_environment(
         self,
-        intervention_environment: Mapping[
-            str,
-            Any,
-        ],
+        intervention_environment: Mapping[str, Any],
     ) -> None:
-        """
-        Merge intervention effects back into WorldState.
-
-        The intervention algorithm is the authority for the effect.
-
-        This method only transfers its resulting state into the
-        authoritative Digital Twin representation.
-        """
-
-        zones = (
-            intervention_environment.get(
-                "zones",
-                {},
-            )
-        )
-
-        if isinstance(
-            zones,
-            Mapping,
-        ):
-
+        """Merge intervention effects back into WorldState environment."""
+        zones = intervention_environment.get("zones", {})
+        if isinstance(zones, Mapping):
             if "intervention_zones" not in self.world.state.environment:
                 self.world.state.environment["intervention_zones"] = {}
             self.world.state.environment["intervention_zones"].update({
-                str(
-                    zone_id
-                ): dict(
-                    zone_state
-                )
-                if isinstance(
-                    zone_state,
-                    Mapping,
-                )
-                else zone_state
-                for (
-                    zone_id,
-                    zone_state,
-                ) in zones.items()
+                str(zid): dict(zstate) if isinstance(zstate, Mapping) else zstate
+                for zid, zstate in zones.items()
             })
 
-        transit_capacities = (
-            intervention_environment.get(
-                "transit_capacities",
-                {},
-            )
-        )
-
-        if isinstance(
-            transit_capacities,
-            Mapping,
-        ):
-
+        transit_capacities = intervention_environment.get("transit_capacities", {})
+        if isinstance(transit_capacities, Mapping):
             if "transit_capacities" not in self.world.state.environment:
                 self.world.state.environment["transit_capacities"] = {}
             self.world.state.environment["transit_capacities"].update({
-                str(
-                    zone_id
-                ): float(
-                    capacity
-                )
-                for (
-                    zone_id,
-                    capacity,
-                ) in transit_capacities.items()
+                str(zid): float(cap) for zid, cap in transit_capacities.items()
             })
 
-        infrastructure_nodes = (
-            intervention_environment.get(
-                "infrastructure_nodes",
-                {},
-            )
-        )
-
-        if isinstance(
-            infrastructure_nodes,
-            Mapping,
-        ):
-
+        infrastructure_nodes = intervention_environment.get("infrastructure_nodes", {})
+        if isinstance(infrastructure_nodes, Mapping):
             if "intervention_infrastructure" not in self.world.state.environment:
                 self.world.state.environment["intervention_infrastructure"] = {}
             self.world.state.environment["intervention_infrastructure"].update({
-                str(
-                    node_id
-                ): dict(
-                    node_state
-                )
-                if isinstance(
-                    node_state,
-                    Mapping,
-                )
-                else node_state
-                for (
-                    node_id,
-                    node_state,
-                ) in infrastructure_nodes.items()
+                str(nid): dict(nstate) if isinstance(nstate, Mapping) else nstate
+                for nid, nstate in infrastructure_nodes.items()
             })
 
 
