@@ -93,12 +93,18 @@ class HumanEvacuationStep(SimulationStep):
         # 3. Agent Panic & Movement
         # ------------------------------------------------------------------
 
+        if not hasattr(self, "_cached_facilities") or self._cached_facilities is None:
+            self._cached_facilities = [
+                entity
+                for entity in context.world.state.get_entities()
+                if isinstance(entity, Facility)
+                and entity.is_safe_center
+            ]
+
         safe_centers = [
             entity
-            for entity in context.world.state.get_entities()
-            if isinstance(entity, Facility)
-            and entity.is_safe_center
-            and entity.is_operational
+            for entity in self._cached_facilities
+            if entity.is_operational
             and entity.available_capacity > 0
         ]
 

@@ -15,8 +15,9 @@ class AgentManager:
 
     def __init__(self, world_state: WorldState) -> None:
         self.world_state = world_state
-
         self._processed_safe_agents: set[str] = set()
+        self._agents: list[HumanAgent] = []
+        self._agent_dict: dict[str, HumanAgent] = {}
 
     # -------------------------------------------------------------------------
     # Registration
@@ -27,6 +28,9 @@ class AgentManager:
         Add a human agent to the Digital Twin.
         """
         self.world_state.add_entity(agent)
+        if agent.id not in self._agent_dict:
+            self._agents.append(agent)
+            self._agent_dict[agent.id] = agent
 
     def add_agents(
         self,
@@ -47,8 +51,11 @@ class AgentManager:
         agent_id: str,
     ) -> Optional[HumanAgent]:
         """
-        Retrieve a human agent by ID.
+        Retrieve a human agent by ID in O(1).
         """
+        if agent_id in self._agent_dict:
+            return self._agent_dict[agent_id]
+
         entity = self.world_state.get_entity(agent_id)
 
         if entity is None:
@@ -59,17 +66,34 @@ class AgentManager:
                 f"Entity '{agent_id}' is not a HumanAgent."
             )
 
+        self._agent_dict[agent_id] = entity
         return entity
 
     def get_agents(self) -> List[HumanAgent]:
         """
         Return all human agents currently in the Digital Twin.
         """
-        return [
-            entity
-            for entity in self.world_state.get_entities()
-            if isinstance(entity, HumanAgent)
-        ]
+        if not self._agents and self.world_state.entities:
+            self._agents = [
+                entity
+                for entity in self.world_state.get_entities()
+                if isinstance(entity, HumanAgent)
+            ]
+            self._agent_dict = {a.id: a for a in self._agents}
+        return self._agents
+
+    def get_agent_state_counts(self) -> dict[str, int]:
+        """
+        Single-pass O(N) calculation of agent state distribution.
+        """
+        counts = {"NORMAL": 0, "PANIC": 0, "SAFE": 0}
+        for agent in self.get_agents():
+            val = agent.state.value if hasattr(agent.state, "value") else str(agent.state)
+            if val in counts:
+                counts[val] += 1
+            else:
+                counts[val] = 1
+        return counts
 
 
     # -------------------------------------------------------------------------

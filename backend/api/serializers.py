@@ -290,9 +290,12 @@ class WorldStateSerializer(
             )
 
             if state is not None:
-                item["state"] = _json_safe(
-                    state
-                )
+                if hasattr(state, "value"):
+                    item["state"] = state.value
+                elif isinstance(state, (str, int, float, bool)):
+                    item["state"] = state
+                else:
+                    item["state"] = _json_safe(state)
 
             zone_id = getattr(
                 entity,

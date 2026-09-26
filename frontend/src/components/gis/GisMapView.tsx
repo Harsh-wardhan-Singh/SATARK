@@ -25,6 +25,7 @@ export const GisMapView: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
+  const circlesMapRef = useRef<Map<string, L.Circle>>(new Map());
 
   const {
     selectedZoneId,
@@ -113,15 +114,14 @@ export const GisMapView: React.FC = () => {
       map.remove();
       mapInstanceRef.current = null;
       layerGroupRef.current = null;
+      circlesMapRef.current.clear();
     };
   }, []);
 
-  // 4. Render and update Zone Overlays & Flood Contours
+  // 4. Render and update Zone Overlays & Flood Contours in-place
   useEffect(() => {
     const layerGroup = layerGroupRef.current;
     if (!layerGroup || zones.length === 0) return;
-
-    layerGroup.clearLayers();
 
     const safeZoneIds = new Set(safeZones.map((s) => s.zoneId));
     const liveDepths = environment?.flood_water_levels || {};
@@ -136,6 +136,14 @@ export const GisMapView: React.FC = () => {
       if (proj) {
         projectedDepths = proj.water_depth_cm;
       }
+    }
+
+    const circlesMap = circlesMapRef.current;
+
+    // Check if zone list count changed; if so, clear layers
+    if (circlesMap.size !== zones.length) {
+      layerGroup.clearLayers();
+      circlesMap.clear();
     }
 
     zones.forEach((zone) => {
@@ -158,30 +166,14 @@ export const GisMapView: React.FC = () => {
       const zd = drainageState[zone.id];
       const isSurcharging = Boolean(zd?.is_surcharging || (zd?.pipe_utilization ?? 0) > 1.0);
 
-      // Create interactive circle contour
-      const circle = L.circle([lat, lng], {
-        radius: 1100,
-        color: isSelected ? '#38bdf8' : isSurcharging ? '#f97316' : color,
-        weight: isSelected ? 3.5 : isSurcharging ? 2.5 : 1.5,
-        dashArray: isSurcharging ? '6, 6' : undefined,
-        fillColor: color,
-        fillOpacity: isSelected ? 0.65 : 0.45,
-      });
+      const strokeColor = isSelected ? '#38bdf8' : isSurcharging ? '#f97316' : color;
+      const weight = isSelected ? 3.5 : isSurcharging ? 2.5 : 1.5;
+      const dashArray = isSurcharging ? '6, 6' : undefined;
+      const fillOpacity = isSelected ? 0.65 : 0.45;
 
-      // Tooltip with ward short name
       const shortWard = zone.ward_name ? ` (${zone.ward_name.split('/')[0].trim()})` : '';
-      circle.bindTooltip(`${zone.id}${shortWard}: ${depthCm} cm`, {
-        permanent: true,
-        direction: 'center',
-        className: 'gis-zone-tooltip',
-      });
+      const tooltipContent = `${zone.id}${shortWard}: ${depthCm} cm`;
 
-      // Click Selection
-      circle.on('click', () => {
-        setSelectedZoneId(zone.id);
-      });
-
-      // Detailed Info Popup
       const popupHtml = `
         <div class="gis-popup-content">
           <div class="gis-popup-header">
@@ -213,9 +205,42 @@ export const GisMapView: React.FC = () => {
           </div>
         </div>
       `;
-      circle.bindPopup(popupHtml);
 
-      layerGroup.addLayer(circle);
+      let circle = circlesMap.get(zone.id);
+      if (!circle) {
+        circle = L.circle([lat, lng], {
+          radius: 1100,
+          color: strokeColor,
+          weight,
+          dashArray,
+          fillColor: color,
+          fillOpacity,
+        });
+
+        circle.bindTooltip(tooltipContent, {
+          permanent: true,
+          direction: 'center',
+          className: 'gis-zone-tooltip',
+        });
+
+        circle.on('click', () => {
+          setSelectedZoneId(zone.id);
+        });
+
+        circle.bindPopup(popupHtml);
+        layerGroup.addLayer(circle);
+        circlesMap.set(zone.id, circle);
+      } else {
+        circle.setStyle({
+          color: strokeColor,
+          weight,
+          dashArray,
+          fillColor: color,
+          fillOpacity,
+        });
+        circle.setTooltipContent(tooltipContent);
+        circle.setPopupContent(popupHtml);
+      }
     });
   }, [
     zones,

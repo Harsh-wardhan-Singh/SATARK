@@ -190,17 +190,21 @@ class WorldState:
             delta_time
         )
 
+    MAX_EVENT_HISTORY: int = 50
+
     def record_event(
         self,
         event: dict,
     ) -> None:
         """
-        Record one simulation event.
+        Record one simulation event. Maintains bounded event ring-buffer.
         """
 
         self.events.append(
             dict(event)
         )
+        if len(self.events) > self.MAX_EVENT_HISTORY:
+            self.events = self.events[-self.MAX_EVENT_HISTORY:]
 
     def update_metric(
         self,

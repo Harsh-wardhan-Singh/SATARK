@@ -20,7 +20,24 @@ class PopulationInitializer:
     """
 
     @staticmethod
+    def _resolve_path(p: str | Path | None) -> Path | None:
+        if not p:
+            return None
+        path = Path(p)
+        if path.exists():
+            return path
+        backend_root = Path(__file__).resolve().parent.parent.parent
+        cand1 = backend_root / p
+        if cand1.exists():
+            return cand1
+        cand2 = backend_root / "data" / path.name
+        if cand2.exists():
+            return cand2
+        return path
+
+    @classmethod
     def load_zone_mapping(
+        cls,
         scenario: Scenario,
         cached_zone_mapping: dict[str, dict[str, Any]] | None = None,
         flood_zone_data: dict[str, Any] | None = None,
@@ -33,13 +50,13 @@ class PopulationInitializer:
 
         mapping_path = scenario.zone_mapping_path
         if mapping_path:
-            path = Path(mapping_path)
+            path = cls._resolve_path(mapping_path)
         elif flood_zone_data:
             return {str(zid): dict(z) for zid, z in flood_zone_data.items()}
         else:
             raise ValueError("A zone_mapping_path is required for population-agent initialization.")
 
-        if not path.exists():
+        if not path or not path.exists():
             raise FileNotFoundError(f"Agent zone mapping file not found: {path}")
 
         with path.open("r", encoding="utf-8") as handle:
@@ -55,8 +72,9 @@ class PopulationInitializer:
             if isinstance(zone, Mapping) and "id" in zone
         }
 
-    @staticmethod
+    @classmethod
     def initialize_human_response(
+        cls,
         scenario: Scenario,
         world: WorldState,
         casualty_infrastructure_data: dict[str, Any],
@@ -66,13 +84,15 @@ class PopulationInitializer:
         Returns a dict containing initialized engines and states.
         """
         pop_data = scenario.get_initial_state("population_data")
-        if pop_data is None and scenario.population_path:
-            with open(scenario.population_path, "r", encoding="utf-8") as f:
+        pop_path = cls._resolve_path(scenario.population_path)
+        if pop_data is None and pop_path and pop_path.exists():
+            with open(pop_path, "r", encoding="utf-8") as f:
                 pop_data = json.load(f)
 
         shelter_data = scenario.get_initial_state("shelter_data")
-        if shelter_data is None and scenario.shelters_path:
-            with open(scenario.shelters_path, "r", encoding="utf-8") as f:
+        shelters_path = cls._resolve_path(scenario.shelters_path)
+        if shelter_data is None and shelters_path and shelters_path.exists():
+            with open(shelters_path, "r", encoding="utf-8") as f:
                 shelter_data = json.load(f)
 
         panic_threshold = float(scenario.get_parameter("panic_threshold", 0.5))
@@ -143,11 +163,11 @@ class PopulationInitializer:
 
         evacuation_engine = None
         if zones_path and shelters_path:
-            zones_file = Path(zones_path)
-            shelters_file = Path(shelters_path)
-            if not zones_file.exists():
+            zones_file = cls._resolve_path(zones_path)
+            shelters_file = cls._resolve_path(shelters_path)
+            if not zones_file or not zones_file.exists():
                 raise FileNotFoundError(f"Evacuation zone file not found: {zones_file}")
-            if not shelters_file.exists():
+            if not shelters_file or not shelters_file.exists():
                 raise FileNotFoundError(f"Evacuation shelter file not found: {shelters_file}")
             evacuation_engine = EvacuationEngine(
                 zones_path=zones_file,

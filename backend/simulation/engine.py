@@ -58,6 +58,9 @@ from decision.optimizer import (
 )
 
 from simulation.initialization.population import PopulationInitializer
+from simulation.initialization.calamity_init import CalamityInitializer
+from simulation.initialization.decision_init import DecisionInitializer
+from simulation.evaluation import SimulationEvaluator
 
 from simulation.pipeline import (
     SimulationPipeline,
@@ -775,119 +778,28 @@ class SimulationEngine:
     # Risk initialization
     # ------------------------------------------------------------------
 
-    def _initialize_risk(
-        self,
-    ) -> None:
+    def _initialize_risk(self) -> None:
+        pass
 
-        self._risk_engine = RiskEngine()
-
+    def _initialize_decision(self) -> None:
+        """Initialize the risk and decision layers via DecisionInitializer."""
+        (
+            self._risk_engine,
+            self._algorithm_recommendation_engine,
+            self._recommendation_engine,
+        ) = DecisionInitializer.initialize_risk_and_decision(world=self.world)
         self._risk_assessment = None
-
         self._risk_state = {}
-
-        self.world.state.environment[
-            "risk"
-        ] = {
-            "available": True,
-            "assessment": None,
-        }
-
-    # ------------------------------------------------------------------
-    # Decision initialization
-    # ------------------------------------------------------------------
-
-    def _initialize_decision(
-        self,
-    ) -> None:
-        """
-        Initialize the decision layer.
-
-        The actual computational intervention rules remain in
-        algorithms/intervention/recommendations.py.
-        """
-
-        self._algorithm_recommendation_engine = (
-            AlgorithmRecommendationEngine()
-        )
-
-        self._recommendation_engine = (
-            RecommendationEngine()
-        )
-
         self._priority_state = {}
-
         self._recommendations = []
-
         self._active_interventions = []
 
-        
-
-        self.world.state.environment[
-            "decision"
-        ] = {
-            "priority": None,
-            "recommendations": [],
-            "active_interventions": [],
-        }
-
-    # ------------------------------------------------------------------
-    # Casualty infrastructure adapter
-    # ------------------------------------------------------------------
-
-    def _build_casualty_infrastructure_data(
-        self,
-    ) -> dict[
-        str,
-        list[
-            dict[str, Any]
-        ],
-    ]:
-
-        infrastructure = []
-
-        if self._infrastructure_state:
-            source = self._infrastructure_state.items()
-
-            for (
-                node_id,
-                node_state,
-            ) in source:
-
-                infrastructure.append(
-                    {
-                        "id": node_id,
-                        "type": node_state.get(
-                            "type",
-                            "UNKNOWN",
-                        ),
-                        "zone_id": node_state.get(
-                            "zone_id"
-                        ),
-                    }
-                )
-
-        elif self._infrastructure_network is not None:
-            for (
-                node_id,
-                node_state,
-            ) in self._infrastructure_network.nodes.items():
-
-                infrastructure.append(
-                    {
-                        "id": node_id,
-                        "type": node_state.get(
-                            "type",
-                            "UNKNOWN",
-                        ),
-                        "zone_id": node_state.get(
-                            "zone_id"
-                        ),
-                    }
-                )
-
-        return {
-            "infrastructure": infrastructure
-        }
+    def _build_casualty_infrastructure_data(self) -> dict[str, list[dict[str, Any]]]:
+        """Produce normalized infrastructure node list for the casualty engine."""
+        return DecisionInitializer.build_casualty_infrastructure_data(
+            infrastructure_state=self._infrastructure_state,
+            infrastructure_network=self._infrastructure_network,
+        )
 
     # ------------------------------------------------------------------
     # Calamity
@@ -896,167 +808,28 @@ class SimulationEngine:
     def _initialize_calamity(
         self,
     ) -> None:
-
-        if (
-            self.scenario.calamity_type
-            == CalamityType.FLOOD
-        ):
-            self._initialize_flood()
-            return
-
-        raise ValueError(
-            "Unsupported calamity type: "
-            f"{self.scenario.calamity_type}"
-        )
-
-    def _initialize_flood(
-        self,
-    ) -> None:
-
-        zone_mapping_path = (
-            self.scenario.zone_mapping_path
-        )
-
-        if not zone_mapping_path:
+        if self.scenario.calamity_type != CalamityType.FLOOD:
             raise ValueError(
-                "Flood scenarios require the "
-                "'zone_mapping_path' parameter."
+                "Unsupported calamity type: "
+                f"{self.scenario.calamity_type}"
             )
 
-        mapping_path = Path(
-            zone_mapping_path
+        (
+            self._flood,
+            self._hyetograph,
+            self._flood_zone_data,
+            self._flood_impact,
+            self._infrastructure_network,
+            self._drainage_model,
+        ) = CalamityInitializer.initialize_flood_and_hydraulics(
+            scenario=self.scenario,
+            world=self.world,
         )
-
-        if not mapping_path.exists():
-            raise FileNotFoundError(
-                "Flood zone mapping file not found: "
-                f"{mapping_path}"
-            )
-
-        self._flood = Flood(
-            zone_mapping_path=mapping_path,
-            rainfall_intensity=(
-                self.scenario
-                .rainfall_intensity
-            ),
-            model_step_seconds=(
-                self.scenario
-                .flood_model_step_seconds
-            ),
-        )
-
-        self._flood.initialize()
-
-        flood_state = self._flood.state
-        if flood_state:
-            self.world.state.environment[
-                "flood_water_levels"
-            ] = dict(
-                flood_state.get(
-                    "water_levels",
-                    {}
-                )
-            )
-            self.world.state.environment[
-                "rainfall_intensity"
-            ] = (
-                self.scenario
-                .rainfall_intensity
-            )
-
-        # Initialize authoritative hyetograph model
-        hyetograph_type = self.scenario.parameters.get(
-            "hyetograph_type", "CONSTANT"
-        )
-        peak_ratio = float(
-            self.scenario.parameters.get("peak_ratio", 0.375)
-        )
-        base_intensity = float(
-            self.scenario.parameters.get("base_rainfall_intensity", 5.0)
-        )
-        radar_series = self.scenario.parameters.get(
-            "radar_series", None
-        )
-        self._hyetograph = HyetographEngine(
-            hyetograph_type=hyetograph_type,
-            peak_intensity=self.scenario.rainfall_intensity,
-            duration_seconds=self.scenario.duration,
-            peak_ratio=peak_ratio,
-            base_intensity=base_intensity,
-            radar_series=radar_series,
-        )
-
-        self._flood_zone_data = {
-            zone["id"]: zone
-            for zone in (
-                self._flood
-                .propagator
-                .zone_data
-            )
-        }
-
-        self._flood_impact = (
-            FloodImpactEngine()
-        )
-
-        infrastructure_path = (
-            self.scenario.infrastructure_path
-        )
-
-        if not infrastructure_path:
-            raise ValueError(
-                "Flood scenarios require the "
-                "'infrastructure_path' parameter."
-            )
-
-        infrastructure_file = Path(
-            infrastructure_path
-        )
-
-        if not infrastructure_file.exists():
-            raise FileNotFoundError(
-                "Infrastructure data file not found: "
-                f"{infrastructure_file}"
-            )
-
-        self._infrastructure_network = (
-            ExplainableNetwork(
-                str(infrastructure_file)
-            )
-        )
-
         self._infrastructure_state = {}
 
     def _initialize_drainage(self) -> None:
-        """
-        Initialize the authoritative stormwater drainage network and coupling model.
-        """
-        drainage_path = self.scenario.parameters.get(
-            "drainage_path",
-            self.scenario.parameters.get(
-                "drainage_network_path",
-                Path(__file__).resolve().parent.parent / "data" / "drainage_network.json",
-            ),
-        )
-
-        if drainage_path and Path(drainage_path).exists():
-            try:
-                network = DrainageNetwork.from_file(drainage_path)
-                self._drainage_model = CoupledDrainageModel(network=network)
-                logger.info(
-                    "Drainage network initialized with %d nodes and %d pipes.",
-                    len(network.nodes),
-                    len(network.pipes),
-                )
-            except Exception as e:
-                logger.warning(
-                    "Failed to initialize drainage network from %s: %s",
-                    drainage_path,
-                    e,
-                )
-                self._drainage_model = None
-        else:
-            self._drainage_model = None
+        # Drainage model is initialized within _initialize_calamity via CalamityInitializer
+        pass
 
     # ------------------------------------------------------------------
     # Phase 14 — Intervention execution
@@ -1375,261 +1148,21 @@ class SimulationEngine:
         ] | None,
     ) -> SimulationEvaluation:
         """
-        Execute one isolated scenario and convert its final state into
-        the optimizer's SimulationEvaluation contract.
-
-        The optimizer calls this once for the baseline and once for each
-        applicable intervention.
-
-        No simulated result is estimated or copied from another run.
+        Execute one isolated scenario and return its SimulationEvaluation via SimulationEvaluator.
         """
-
-        if scenario_payload is None:
-            base_scenario = self.scenario
-            intervention = None
-
-        else:
-            supplied_scenario = scenario_payload.get(
-                "scenario",
-                self.scenario,
-            )
-
-            if not isinstance(
-                supplied_scenario,
-                Scenario,
-            ):
-                raise TypeError(
-                    "Optimization scenario payload must contain "
-                    "a Scenario under the 'scenario' key."
-                )
-
-            base_scenario = supplied_scenario
-            intervention = scenario_payload.get(
-                "intervention"
-            )
-
-        evaluation_scenario = (
-            self._clone_scenario_with_intervention(
-                base_scenario,
-                intervention,
-            )
+        return SimulationEvaluator.provide_simulation_evaluation(
+            engine_cls=SimulationEngine,
+            scenario_payload=scenario_payload,
+            base_scenario=self.scenario,
+            initial_entities=self._initial_entities,
+            cached_zone_mapping=self._cached_zone_mapping,
         )
-
-        evaluation_engine = SimulationEngine(
-            scenario=evaluation_scenario,
-            entities=self._clone_initial_entities(),
-        )
-        if self._cached_zone_mapping:
-            evaluation_engine._cached_zone_mapping = dict(self._cached_zone_mapping)
-
-        evaluation_engine.initialize()
-
-        while not evaluation_engine.is_complete:
-            evaluation_engine.step()
-
-        return (
-            evaluation_engine
-            ._build_simulation_evaluation()
-        )
-
-    @staticmethod
-    def _clone_scenario_with_intervention(
-        scenario: Scenario,
-        intervention: Mapping[
-            str,
-            Any,
-        ] | None,
-    ) -> Scenario:
-        """
-        Produce an isolated Scenario copy.
-
-        The baseline always receives no intervention.
-
-        Candidate scenarios receive the intervention generated by the
-        decision layer.
-
-        Scenario remains the owner of configuration; SimulationEngine
-        merely creates an isolated what-if copy.
-        """
-
-        if intervention is not None:
-            intervention_value: Any = dict(
-                intervention
-            )
-        else:
-            intervention_value = None
-
-        if is_dataclass(scenario):
-            try:
-                return replace(
-                    scenario,
-                    intervention=intervention_value,
-                )
-            except TypeError:
-                pass
-
-        scenario_copy = deepcopy(
-            scenario
-        )
-
-        try:
-            setattr(
-                scenario_copy,
-                "intervention",
-                intervention_value,
-            )
-        except (
-            AttributeError,
-            TypeError,
-        ) as exc:
-            raise TypeError(
-                "Scenario must support an 'intervention' field "
-                "for baseline/intervention optimization."
-            ) from exc
-
-        return scenario_copy
-
-    def _clone_initial_entities(
-        self,
-    ) -> list[Entity]:
-        """
-        Return independent copies of the initial Digital Twin entities.
-
-        Entity objects are mutable, so sharing them between baseline and
-        candidate simulations would contaminate subsequent scenarios.
-        """
-
-        return [
-            deepcopy(entity)
-            for entity in self._initial_entities
-        ]
 
     def _build_simulation_evaluation(
         self,
     ) -> SimulationEvaluation:
-        """
-        Convert the completed authoritative WorldState into the compact
-        result required by OptimizationEngine.
-
-        All values are derived from actual final simulation state.
-        """
-
-        final_risk_score = 0.0
-
-        if self._risk_assessment is not None:
-            final_risk_score = float(
-                self._risk_assessment
-                .composite_risk_score
-            )
-
-        fatalities = float(
-            self._casualty_state.get(
-                "total_fatalities",
-                self.world.state.metrics.get(
-                    "total_fatalities",
-                    0.0,
-                ),
-            )
-        )
-
-        injuries = float(
-            self._casualty_state.get(
-                "total_injuries",
-                self.world.state.metrics.get(
-                    "total_injuries",
-                    0.0,
-                ),
-            )
-        )
-
-        total_casualties = (
-            fatalities
-            + injuries
-        )
-
-        infrastructure_damage = (
-            self._calculate_infrastructure_damage()
-        )
-
-        congestion = (
-            self._calculate_congestion()
-        )
-
-        metrics = {
-            key: float(value)
-            for key, value
-            in self.world.state.metrics.items()
-        }
-
-        additional_data = {
-            "current_tick": (
-                self.clock.current_tick
-            ),
-            "simulation_time": (
-                self.clock.simulation_time
-            ),
-            "severity": (
-                self._risk_assessment
-                .severity_label
-                if self._risk_assessment is not None
-                else None
-            ),
-            "risk_breakdown": (
-                dict(
-                    self._risk_assessment
-                    .breakdown
-                )
-                if self._risk_assessment is not None
-                else {}
-            ),
-            "fatalities": fatalities,
-            "injuries": injuries,
-            "active_intervention": (
-                dict(self._active_interventions[-1]) if self._active_interventions else None
-            ),
-            "active_interventions": [dict(i) for i in self._active_interventions],
-        }
-
-        drainage_state = self.world.state.environment.get("drainage", {})
-        total_surcharge_m3 = float(drainage_state.get("total_surcharge_volume_m3", 0.0))
-
-        water_levels = self.world.state.environment.get("flood_water_levels", {})
-        peak_depth_m = max(water_levels.values()) if water_levels else 0.0
-        peak_depth_cm = round(peak_depth_m * 100.0, 2)
-        critical_zones = sum(1 for d in water_levels.values() if d >= 0.30)
-
-        return SimulationEvaluation(
-            metrics=metrics,
-            final_risk_score=final_risk_score,
-            casualties=total_casualties,
-            infrastructure_damage=(
-                infrastructure_damage
-            ),
-            congestion=congestion,
-            total_surcharge_m3=total_surcharge_m3,
-            peak_water_depth_cm=peak_depth_cm,
-            critical_zones_count=critical_zones,
-            additional_data=additional_data,
-        )
-
-    def _calculate_infrastructure_damage(self) -> float:
-        """Calculate normalized final infrastructure damage (0.0 to 1.0)."""
-        if not self._infrastructure_state:
-            return 0.0
-        capacities = [
-            max(0.0, min(1.0, float(n.get("capacity", 1.0))))
-            for n in self._infrastructure_state.values()
-            if isinstance(n, Mapping)
-        ]
-        return max(0.0, min(1.0, 1.0 - (sum(capacities) / len(capacities)))) if capacities else 0.0
-
-    def _calculate_congestion(self) -> float:
-        """Calculate normalized final congestion from crowd bottleneck state."""
-        bottlenecks = self.world.state.environment.get("bottlenecks", {})
-        if not isinstance(bottlenecks, Mapping) or not bottlenecks:
-            return 0.0
-        values = [max(0.0, float(v)) for v in bottlenecks.values() if isinstance(v, (int, float))]
-        return max(0.0, min(1.0, max(values))) if values else 0.0
+        """Derive SimulationEvaluation from self via SimulationEvaluator."""
+        return SimulationEvaluator.build_simulation_evaluation(self)
 
     # ------------------------------------------------------------------
     # Lifecycle

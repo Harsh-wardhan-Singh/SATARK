@@ -18,21 +18,22 @@ class MetricsStep(SimulationStep):
         # Agent metrics
         if context.agent_manager is not None:
             agents = context.agent_manager.get_agents()
+            state_counts = context.agent_manager.get_agent_state_counts()
 
             context.world.state.update_metric(
                 "agent_count", float(len(agents))
             )
             context.world.state.update_metric(
                 "normal_agents",
-                float(len(context.agent_manager.get_normal_agents())),
+                float(state_counts.get("NORMAL", 0)),
             )
             context.world.state.update_metric(
                 "panicked_agents",
-                float(len(context.agent_manager.get_panicked_agents())),
+                float(state_counts.get("PANIC", 0)),
             )
             context.world.state.update_metric(
                 "safe_agents",
-                float(len(context.agent_manager.get_safe_agents())),
+                float(state_counts.get("SAFE", 0)),
             )
 
             agent_zone_population = context.agent_manager.get_zone_population()

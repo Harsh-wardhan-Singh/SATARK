@@ -52,6 +52,18 @@ def clear_model_cache() -> None:
     _MODEL_CACHE.clear()
 
 
+def warmup_model_cache(model_path: str = MODEL_PATH) -> bool:
+    """
+    Pre-warm model cache to ensure zero-latency initial scenario creation (<10ms).
+    Returns True if model was successfully loaded/cached.
+    """
+    try:
+        get_cached_model(model_path)
+        return True
+    except Exception:
+        return False
+
+
 class FloodImpactPredictor:
     """
     Runtime wrapper around the trained flood-impact model.

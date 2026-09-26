@@ -21,6 +21,10 @@ from simulation.scenario import Scenario
 import json
 
 from algorithms.navigation import FloodSafeNavigationEngine
+from ml.predict import warmup_model_cache
+
+# Warm up ML model cache at module load time for sub-10ms initializations
+warmup_model_cache()
 
 from api.serializers import (
     InterventionRequestSerializer,
