@@ -17,8 +17,8 @@ SATARK (*Sensing, Analytics, Topographic Assessment & Real-time Knowledge*) is a
 
 SATARK delivers a dual command-center interface: a **3D Holographic Digital Twin** with real-time agent evacuation dynamics and water height rendering, coupled with an interactive **2D GIS Map** displaying georeferenced municipal ward boundaries, flood depth contours, and drainage surcharge warnings.
 
-![SATARK 3D dashboard screenshot](images\3D.png)
-![SATARK 2D dashboard screenshot](images\2D.png)
+![SATARK 3D dashboard screenshot](images/3D.png) 
+![SATARK 2D dashboard screenshot](images/2D.png)
 
 ## Features
 
